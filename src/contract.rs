@@ -17,7 +17,10 @@ pub fn instantiate(
         deps.storage,
         &Config {
             recipient: deps.api.addr_validate(&msg.recipient)?,
-            start_time: msg.start_time.clone().unwrap_or(Uint64::new(env.block.time.seconds())),
+            start_time: msg
+                .start_time
+                .clone()
+                .unwrap_or(Uint64::new(env.block.time.seconds())),
             end_time: msg.end_time,
             //this whitelist is to designate users who can call the withdraw vested funds message. they cannot perform any other action
             whitelisted_addresses: vec![deps.api.addr_validate(&msg.recipient)?],
@@ -27,14 +30,20 @@ pub fn instantiate(
     STATE.save(
         deps.storage,
         &State {
-            last_updated_block: msg.start_time.unwrap_or(Uint64::new(env.block.time.seconds())),
+            last_updated_block: msg
+                .start_time
+                .unwrap_or(Uint64::new(env.block.time.seconds())),
         },
     )?;
 
     Ok(Response::new()
         .add_attribute("action", "instantiate")
         .add_attribute("recipient", msg.recipient)
-        .add_attribute("start_time", msg.start_time.unwrap_or(Uint64::new(env.block.time.seconds())))
+        .add_attribute(
+            "start_time",
+            msg.start_time
+                .unwrap_or(Uint64::new(env.block.time.seconds())),
+        )
         .add_attribute("end_time", msg.end_time))
 }
 
@@ -47,12 +56,16 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
-    if !config.whitelisted_addresses.contains(&info.sender) || env.block.time.seconds() < config.start_time.u64() {
+    if !config.whitelisted_addresses.contains(&info.sender)
+        || env.block.time.seconds() < config.start_time.u64()
+    {
         return Err(ContractError::Unauthorized {});
     }
     match msg {
         ExecuteMsg::WithdrawVestedFunds => {
-            if !config.whitelisted_addresses.contains(&info.sender) || env.block.time.seconds() < config.start_time.u64() {
+            if !config.whitelisted_addresses.contains(&info.sender)
+                || env.block.time.seconds() < config.start_time.u64()
+            {
                 return Err(ContractError::Unauthorized {});
             }
             let amount_to_withdraw = deps
@@ -81,7 +94,8 @@ pub fn execute(
                 .add_attribute("last_updated_block", env.block.time.seconds().to_string()))
         }
         ExecuteMsg::AddToWhitelist(data) => {
-            if config.recipient != info.sender || env.block.time.seconds() < config.start_time.u64() {
+            if config.recipient != info.sender || env.block.time.seconds() < config.start_time.u64()
+            {
                 return Err(ContractError::Unauthorized {});
             }
             let mut new_addresses = config.whitelisted_addresses.clone();
@@ -96,20 +110,20 @@ pub fn execute(
                     recipient: config.recipient,
                     start_time: config.start_time,
                     end_time: config.end_time,
-                    whitelisted_addresses: new_addresses,
-                }
+                    whitelisted_addresses: new_addresses.clone(),
+                },
             )?;
             Ok(Response::new()
                 .add_attribute("action", "add_to_whitelist")
-                .add_attribute("whitelisted_addresses", format!("{:?}", new_addresses))
-            )
+                .add_attribute("whitelisted_addresses", format!("{:?}", new_addresses)))
         }
         ExecuteMsg::RemoveFromWhitelist(data) => {
-            if config.recipient != info.sender || env.block.time.seconds() < config.start_time.u64() {
+            if config.recipient != info.sender || env.block.time.seconds() < config.start_time.u64()
+            {
                 return Err(ContractError::Unauthorized {});
             }
             //always keep recipient address on the whitelist
-            let mut new_addresses = vec![config.recipient];
+            let mut new_addresses = vec![config.recipient.clone()];
             for addr in config.whitelisted_addresses {
                 if !data.addresses.contains(&addr) && addr != config.recipient {
                     new_addresses.push(addr);
@@ -121,13 +135,12 @@ pub fn execute(
                     recipient: config.recipient,
                     start_time: config.start_time,
                     end_time: config.end_time,
-                    whitelisted_addresses: new_addresses,
-                }
+                    whitelisted_addresses: new_addresses.clone(),
+                },
             )?;
             Ok(Response::new()
                 .add_attribute("action", "remove_from_whitelist")
-                .add_attribute("whitelisted_addresses", format!("{:?}", new_addresses))
-            )
+                .add_attribute("whitelisted_addresses", format!("{:?}", new_addresses)))
         }
     }
 }
@@ -135,8 +148,6 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::QueryConfig => {
-            to_binary(&CONFIG.load(deps.storage)?)
-        }
+        QueryMsg::QueryConfig => to_binary(&CONFIG.load(deps.storage)?),
     }
 }
