@@ -17,7 +17,7 @@ pub fn instantiate(
         deps.storage,
         &Config {
             recipient: deps.api.addr_validate(&msg.recipient)?,
-            start_time: msg.start_time.clone().unwrap_or(Uint64::new(env.block.height)),
+            start_time: msg.start_time.clone().unwrap_or(Uint64::new(env.block.time.seconds())),
             end_time: msg.end_time,
             //this whitelist is to designate users who can call the withdraw vested funds message. they cannot perform any other action
             whitelisted_addresses: vec![deps.api.addr_validate(&msg.recipient)?],
@@ -27,14 +27,14 @@ pub fn instantiate(
     STATE.save(
         deps.storage,
         &State {
-            last_updated_block: msg.start_time.unwrap_or(Uint64::new(env.block.height)),
+            last_updated_block: msg.start_time.unwrap_or(Uint64::new(env.block.time.seconds())),
         },
     )?;
 
     Ok(Response::new()
         .add_attribute("action", "instantiate")
         .add_attribute("recipient", msg.recipient)
-        .add_attribute("start_time", msg.start_time.unwrap_or(Uint64::new(env.block.height)))
+        .add_attribute("start_time", msg.start_time.unwrap_or(Uint64::new(env.block.time.seconds())))
         .add_attribute("end_time", msg.end_time))
 }
 
@@ -47,12 +47,12 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
-    if !config.whitelisted_addresses.contains(&info.sender) || env.block.height < config.start_time.u64() {
+    if !config.whitelisted_addresses.contains(&info.sender) || env.block.time.seconds() < config.start_time.u64() {
         return Err(ContractError::Unauthorized {});
     }
     match msg {
         ExecuteMsg::WithdrawVestedFunds => {
-            if !config.whitelisted_addresses.contains(&info.sender) || env.block.height < config.start_time.u64() {
+            if !config.whitelisted_addresses.contains(&info.sender) || env.block.time.seconds() < config.start_time.u64() {
                 return Err(ContractError::Unauthorized {});
             }
             let amount_to_withdraw = deps
@@ -60,12 +60,12 @@ pub fn execute(
                 .query_balance(env.contract.address, "uluna")?
                 .amount
                 / Uint128::from(config.end_time - config.start_time)
-                * Uint128::from(env.block.height - state.last_updated_block.u64());
+                * Uint128::from(env.block.time.seconds() - state.last_updated_block.u64());
 
             STATE.save(
                 deps.storage,
                 &State {
-                    last_updated_block: Uint64::new(env.block.height),
+                    last_updated_block: Uint64::new(env.block.time.seconds()),
                 },
             )?;
 
@@ -78,10 +78,10 @@ pub fn execute(
                 .add_message(msg)
                 .add_attribute("action", "withdraw_vested_funds")
                 .add_attribute("amount_to_withdraw", amount_to_withdraw)
-                .add_attribute("last_updated_block", env.block.height.to_string()))
+                .add_attribute("last_updated_block", env.block.time.seconds().to_string()))
         }
         ExecuteMsg::AddToWhitelist(data) => {
-            if config.recipient != info.sender || env.block.height < config.start_time.u64() {
+            if config.recipient != info.sender || env.block.time.seconds() < config.start_time.u64() {
                 return Err(ContractError::Unauthorized {});
             }
             let mut new_addresses = config.whitelisted_addresses.clone();
@@ -105,7 +105,7 @@ pub fn execute(
             )
         }
         ExecuteMsg::RemoveFromWhitelist(data) => {
-            if config.recipient != info.sender || env.block.height < config.start_time.u64() {
+            if config.recipient != info.sender || env.block.time.seconds() < config.start_time.u64() {
                 return Err(ContractError::Unauthorized {});
             }
             //always keep recipient address on the whitelist
