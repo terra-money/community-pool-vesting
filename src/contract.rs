@@ -43,7 +43,7 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
-    if info.sender != config.recipient {
+    if info.sender != config.recipient || env.block.height < config.start_time.u64() {
         return Err(ContractError::Unauthorized {});
     }
     match msg {
