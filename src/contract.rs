@@ -1,7 +1,10 @@
 use crate::state::{CONFIG, STATE};
 use crate::{Config, ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::{ContractError, State};
-use cosmwasm_std::{entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128, Uint64, CosmosMsg, BankMsg, Coin};
+use cosmwasm_std::{
+    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    Response, StdResult, Uint128, Uint64,
+};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -14,6 +17,7 @@ pub fn instantiate(
         deps.storage,
         &Config {
             recipient: deps.api.addr_validate(&msg.recipient)?,
+            start_time: msg.start_time.unwrap_or(Uint64::new(env.block.height)),
             end_time: msg.end_time,
         },
     )?;
@@ -48,8 +52,8 @@ pub fn execute(
                 .querier
                 .query_balance(env.contract.address, "uluna")?
                 .amount
-                * Uint128::from(env.block.height)
-                - Uint128::from(state.last_updated_block);
+                / Uint128::from(config.end_time - config.start_time)
+                * Uint128::from(env.block.height - state.last_updated_block.u64());
 
             STATE.save(
                 deps.storage,
@@ -60,9 +64,7 @@ pub fn execute(
 
             let msg = CosmosMsg::Bank(BankMsg::Send {
                 to_address: config.recipient.to_string(),
-                amount: vec![
-                    Coin::new(amount_to_withdraw.u128(), "uluna")
-                ],
+                amount: vec![Coin::new(amount_to_withdraw.u128(), "uluna")],
             });
 
             Ok(Response::new()
