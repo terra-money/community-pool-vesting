@@ -9,6 +9,7 @@ use cosmwasm_std::{Addr, Uint64};
 
 #[cw_serde]
 pub struct Config {
+    pub owner: Addr,
     pub recipient: Addr,
     pub start_time: Uint64,
     pub end_time: Uint64,
@@ -22,6 +23,7 @@ pub struct State {
 
 #[cw_serde]
 pub struct InstantiateMsg {
+    pub owner: String,
     pub recipient: String,
     pub start_time: Option<Uint64>,
     pub end_time: Uint64,

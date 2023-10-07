@@ -16,6 +16,7 @@ pub fn instantiate(
     CONFIG.save(
         deps.storage,
         &Config {
+            owner: deps.api.addr_validate(&msg.owner)?,
             recipient: deps.api.addr_validate(&msg.recipient)?,
             start_time: msg
                 .start_time
@@ -23,7 +24,7 @@ pub fn instantiate(
                 .unwrap_or(Uint64::new(env.block.time.seconds())),
             end_time: msg.end_time,
             //this whitelist is to designate users who can call the withdraw vested funds message. they cannot perform any other action
-            whitelisted_addresses: vec![deps.api.addr_validate(&msg.recipient)?],
+            whitelisted_addresses: vec![deps.api.addr_validate(&msg.recipient)?, deps.api.addr_validate(&msg.recipient)?],
         },
     )?;
 
@@ -94,7 +95,7 @@ pub fn execute(
                 .add_attribute("last_updated_block", env.block.time.seconds().to_string()))
         }
         ExecuteMsg::AddToWhitelist(data) => {
-            if config.recipient != info.sender || env.block.time.seconds() < config.start_time.u64()
+            if config.owner != info.sender || env.block.time.seconds() < config.start_time.u64()
             {
                 return Err(ContractError::Unauthorized {});
             }
@@ -107,6 +108,7 @@ pub fn execute(
             CONFIG.save(
                 deps.storage,
                 &Config {
+                    owner: config.owner,
                     recipient: config.recipient,
                     start_time: config.start_time,
                     end_time: config.end_time,
@@ -118,20 +120,21 @@ pub fn execute(
                 .add_attribute("whitelisted_addresses", format!("{:?}", new_addresses)))
         }
         ExecuteMsg::RemoveFromWhitelist(data) => {
-            if config.recipient != info.sender || env.block.time.seconds() < config.start_time.u64()
+            if config.owner != info.sender || env.block.time.seconds() < config.start_time.u64()
             {
                 return Err(ContractError::Unauthorized {});
             }
-            //always keep recipient address on the whitelist
-            let mut new_addresses = vec![config.recipient.clone()];
+            //always keep recipient and owner address on the whitelist
+            let mut new_addresses = vec![config.recipient.clone(), config.owner.clone()];
             for addr in config.whitelisted_addresses {
-                if !data.addresses.contains(&addr) && addr != config.recipient {
+                if !data.addresses.contains(&addr) && addr != config.recipient && addr != config.owner {
                     new_addresses.push(addr);
                 }
             }
             CONFIG.save(
                 deps.storage,
                 &Config {
+                    owner: config.owner,
                     recipient: config.recipient,
                     start_time: config.start_time,
                     end_time: config.end_time,
