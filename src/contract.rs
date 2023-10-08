@@ -57,16 +57,10 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
-    if !config.whitelisted_addresses.contains(&info.sender)
-        || env.block.time.seconds() < config.start_time.u64()
-    {
-        return Err(ContractError::Unauthorized {});
-    }
     match msg {
         ExecuteMsg::WithdrawVestedFunds => {
             if !config.whitelisted_addresses.contains(&info.sender)
-                || env.block.time.seconds() < config.start_time.u64()
-            {
+                || env.block.time.seconds() < config.start_time.u64() {
                 return Err(ContractError::Unauthorized {});
             }
             let amount_to_withdraw = deps
@@ -95,8 +89,7 @@ pub fn execute(
                 .add_attribute("last_updated_block", env.block.time.seconds().to_string()))
         }
         ExecuteMsg::AddToWhitelist(data) => {
-            if config.owner != info.sender || env.block.time.seconds() < config.start_time.u64()
-            {
+            if config.owner != info.sender {
                 return Err(ContractError::Unauthorized {});
             }
             let mut new_addresses = config.whitelisted_addresses.clone();
@@ -120,8 +113,7 @@ pub fn execute(
                 .add_attribute("whitelisted_addresses", format!("{:?}", new_addresses)))
         }
         ExecuteMsg::RemoveFromWhitelist(data) => {
-            if config.owner != info.sender || env.block.time.seconds() < config.start_time.u64()
-            {
+            if config.owner != info.sender {
                 return Err(ContractError::Unauthorized {});
             }
             //always keep recipient and owner address on the whitelist
@@ -144,6 +136,36 @@ pub fn execute(
             Ok(Response::new()
                 .add_attribute("action", "remove_from_whitelist")
                 .add_attribute("whitelisted_addresses", format!("{:?}", new_addresses)))
+        }
+        ExecuteMsg::UpdateOwner(data) => {
+            if config.owner != info.sender {
+                return Err(ContractError::Unauthorized {});
+            }
+            CONFIG.save(deps.storage, &Config {
+                owner: deps.api.addr_validate(&data.owner)?,
+                recipient: config.recipient,
+                start_time: config.start_time,
+                end_time: config.end_time,
+                whitelisted_addresses: config.whitelisted_addresses,
+            })?;
+            Ok(Response::new()
+                .add_attribute("action", "update_owner")
+                .add_attribute("owner", format!("{:?}", data.owner)))
+        }
+        ExecuteMsg::UpdateRecipient(data) => {
+            if config.owner != info.sender {
+                return Err(ContractError::Unauthorized {});
+            }
+            CONFIG.save(deps.storage, &Config {
+                owner: config.owner,
+                recipient: deps.api.addr_validate(&data.recipient)?,
+                start_time: config.start_time,
+                end_time: config.end_time,
+                whitelisted_addresses: config.whitelisted_addresses,
+            })?;
+            Ok(Response::new()
+                .add_attribute("action", "update_recipient")
+                .add_attribute("owner", format!("{:?}", data.recipient)))
         }
     }
 }

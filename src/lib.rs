@@ -34,6 +34,8 @@ pub enum ExecuteMsg {
     WithdrawVestedFunds,
     AddToWhitelist(AddToWhitelistMsg),
     RemoveFromWhitelist(RemoveFromWhitelistMsg),
+    UpdateOwner(UpdateOwnerMsg),
+    UpdateRecipient(UpdateRecipientMsg),
 }
 
 #[cw_serde]
@@ -44,6 +46,16 @@ pub struct AddToWhitelistMsg {
 #[cw_serde]
 pub struct RemoveFromWhitelistMsg {
     pub addresses: Vec<Addr>,
+}
+
+#[cw_serde]
+pub struct UpdateOwnerMsg {
+    pub owner: String,
+}
+
+#[cw_serde]
+pub struct UpdateRecipientMsg {
+    pub recipient: String,
 }
 
 #[cw_serde]
