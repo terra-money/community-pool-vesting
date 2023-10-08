@@ -29,7 +29,7 @@ pub fn instantiate(
     STATE.save(
         deps.storage,
         &State {
-            last_updated_block: msg
+            last_withdrawn_time: msg
                 .start_time
                 .unwrap_or(Uint64::new(env.block.time.seconds())),
         },
@@ -61,27 +61,54 @@ pub fn execute(
                 || env.block.time.seconds() < config.start_time.u64() {
                 return Err(ContractError::Unauthorized {});
             }
+
+            let balance_smaller_than_withdrawable = deps
+                .querier
+                .query_balance(env.contract.address.clone(), data.denom.clone())?
+                .amount
+                <
+                config.initial_amount
+                    - config.initial_amount * Uint128::from(state.last_withdrawn_time.u64() - config.start_time) / Uint128::from(config.end_time - config.start_time)
+                    - config.initial_amount * Uint128::from(config.end_time - env.block.time.seconds()) / Uint128::from(config.end_time - config.start_time);
+
             let amount_to_withdraw = if data.denom == "uluna" {
-                deps
-                    .querier
-                    .query_balance(env.contract.address, data.denom.clone())?
-                    .amount //total available
-                    - config.initial_amount * Uint128::from(state.last_updated_block.u64() - config.start_time) / Uint128::from(config.end_time - config.start_time) //minus already withdrawn amount
-                    - config.initial_amount * Uint128::from(config.end_time - env.block.time.seconds()) / Uint128::from(config.end_time - config.start_time) //minus amount not vested yet
+                if balance_smaller_than_withdrawable {
+                    deps
+                        .querier
+                        .query_balance(env.contract.address.clone(), data.denom.clone())?
+                        .amount
+                } else {
+                    deps
+                        .querier
+                        .query_balance(env.contract.address.clone(), data.denom.clone())?
+                        .amount //total available
+                        - config.initial_amount * Uint128::from(state.last_withdrawn_time.u64() - config.start_time) / Uint128::from(config.end_time - config.start_time) //minus already withdrawn amount
+                        - config.initial_amount * Uint128::from(config.end_time - env.block.time.seconds()) / Uint128::from(config.end_time - config.start_time) //minus amount not vested yet
+                }
+
             } else {
                 deps
                     .querier
-                    .query_balance(env.contract.address, data.denom.clone())?
+                    .query_balance(env.contract.address.clone(), data.denom.clone())?
                     .amount
+            };
+
+            let last_withdrawn_time = if balance_smaller_than_withdrawable { //if balance is smaller than withdrawable, we set the withdrawn time in seconds to something smaller than the current blocktime
+                state.last_withdrawn_time + Uint64::try_from(deps
+                    .querier
+                    .query_balance(env.contract.address, data.denom.clone())?
+                    .amount / config.initial_amount / Uint128::from(config.end_time - config.start_time))?
+            } else {
+                Uint64::new(env.block.time.seconds())
             };
 
             STATE.save(
                 deps.storage,
                 &State {
-                    last_updated_block: if data.denom == "uluna" { //only update the withdrawal block if the asset withdrawn is luna
-                        Uint64::new(env.block.time.seconds())
+                    last_withdrawn_time: if data.denom == "uluna" { //only update the withdrawal block if the asset withdrawn is luna
+                        last_withdrawn_time
                     } else {
-                        state.last_updated_block
+                        state.last_withdrawn_time
                     },
                 },
             )?;

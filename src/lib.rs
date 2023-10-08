@@ -19,7 +19,7 @@ pub struct Config {
 
 #[cw_serde]
 pub struct State {
-    pub last_updated_block: Uint64,
+    pub last_withdrawn_time: Uint64,
 }
 
 #[cw_serde]
