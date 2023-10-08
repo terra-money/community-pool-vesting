@@ -62,7 +62,8 @@ pub struct DelegateFundsMsg {
 #[cw_serde]
 pub struct UndelegateFundsMsg {
     pub validator: String,
-    pub amount: Coin,}
+    pub amount: Coin,
+}
 
 #[cw_serde]
 pub struct RedelegateFundsMsg {
@@ -93,4 +94,5 @@ pub struct UpdateRecipientMsg {
 #[cw_serde]
 pub enum QueryMsg {
     QueryConfig,
+    QueryState,
 }
