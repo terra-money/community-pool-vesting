@@ -1,10 +1,7 @@
 use crate::state::{CONFIG, STATE};
 use crate::{Config, ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::{ContractError, State};
-use cosmwasm_std::{
-    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, Uint64,
-};
+use cosmwasm_std::{entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128, Uint64, DistributionMsg, StakingMsg};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -58,14 +55,14 @@ pub fn execute(
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
     match msg {
-        ExecuteMsg::WithdrawVestedFunds => {
+        ExecuteMsg::WithdrawVestedFunds(data) => {
             if !config.whitelisted_addresses.contains(&info.sender)
                 || env.block.time.seconds() < config.start_time.u64() {
                 return Err(ContractError::Unauthorized {});
             }
             let amount_to_withdraw = deps
                 .querier
-                .query_balance(env.contract.address, "uluna")?
+                .query_balance(env.contract.address, data.denom.clone())?
                 .amount
                 / Uint128::from(config.end_time - config.start_time)
                 * Uint128::from(env.block.time.seconds() - state.last_updated_block.u64());
@@ -79,14 +76,80 @@ pub fn execute(
 
             let msg = CosmosMsg::Bank(BankMsg::Send {
                 to_address: config.recipient.to_string(),
-                amount: vec![Coin::new(amount_to_withdraw.u128(), "uluna")],
+                amount: vec![Coin::new(amount_to_withdraw.u128(), data.denom.clone())],
             });
 
             Ok(Response::new()
                 .add_message(msg)
                 .add_attribute("action", "withdraw_vested_funds")
+                .add_attribute("denom", data.denom)
                 .add_attribute("amount_to_withdraw", amount_to_withdraw)
                 .add_attribute("last_updated_block", env.block.time.seconds().to_string()))
+        }
+        ExecuteMsg::WithdrawDelegatorReward(data) => {
+            if config.owner != info.sender {
+                return Err(ContractError::Unauthorized {});
+            }
+            let msg = CosmosMsg::Distribution(DistributionMsg::WithdrawDelegatorReward {
+                validator: data.validator.clone(),
+            });
+            Ok(Response::new()
+                .add_message(msg)
+                .add_attribute("action", "withdraw_delegator_rewards")
+                .add_attribute("validator", data.validator))
+        }
+        ExecuteMsg::DelegateFunds(data) => {
+            if config.owner != info.sender {
+                return Err(ContractError::Unauthorized {});
+            }
+            let msg = CosmosMsg::Staking(StakingMsg::Delegate {
+                validator: data.validator.clone(),
+                amount: data.amount.clone(),
+            });
+
+            Ok(Response::new()
+                .add_message(msg)
+                .add_attribute("action", "delegate_funds")
+                .add_attribute("validator", data.validator)
+                .add_attribute("denom", data.amount.denom)
+                .add_attribute("amount", data.amount.amount)
+            )
+        }
+        ExecuteMsg::UndelegateFunds(data) => {
+            if config.owner != info.sender {
+                return Err(ContractError::Unauthorized {});
+            }
+            let msg = CosmosMsg::Staking(StakingMsg::Undelegate {
+                validator: data.validator.clone(),
+                amount: data.amount.clone(),
+            });
+
+            Ok(Response::new()
+                .add_message(msg)
+                .add_attribute("action", "undelegate_funds")
+                .add_attribute("validator", data.validator)
+                .add_attribute("denom", data.amount.denom)
+                .add_attribute("amount", data.amount.amount)
+            )
+        }
+        ExecuteMsg::RedelegateFunds(data) => {
+            if config.owner != info.sender {
+                return Err(ContractError::Unauthorized {});
+            }
+            let msg = CosmosMsg::Staking(StakingMsg::Redelegate {
+                src_validator: data.src_validator.clone(),
+                dst_validator: data.dst_validator.clone(),
+                amount: data.amount.clone(),
+            });
+
+            Ok(Response::new()
+                .add_message(msg)
+                .add_attribute("action", "redelegate_funds")
+                .add_attribute("src_validator", data.src_validator)
+                .add_attribute("dst_validator", data.dst_validator)
+                .add_attribute("denom", data.amount.denom)
+                .add_attribute("amount", data.amount.amount)
+            )
         }
         ExecuteMsg::AddToWhitelist(data) => {
             if config.owner != info.sender {

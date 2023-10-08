@@ -5,7 +5,7 @@ pub mod state;
 pub use crate::error::ContractError;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint64};
+use cosmwasm_std::{Addr, Coin, Uint128, Uint64};
 
 #[cw_serde]
 pub struct Config {
@@ -31,12 +31,42 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    WithdrawVestedFunds,
+    WithdrawVestedFunds(WithdrawVestedFundsMsg),
+    WithdrawDelegatorReward(WithdrawDelegatorRewardMsg),
+    DelegateFunds(DelegateFundsMsg),
+    UndelegateFunds(UndelegateFundsMsg),
+    RedelegateFunds(RedelegateFundsMsg),
     AddToWhitelist(AddToWhitelistMsg),
     RemoveFromWhitelist(RemoveFromWhitelistMsg),
     UpdateOwner(UpdateOwnerMsg),
     UpdateRecipient(UpdateRecipientMsg),
 }
+
+#[cw_serde]
+pub struct WithdrawVestedFundsMsg {
+    pub denom: String,
+}
+#[cw_serde]
+pub struct WithdrawDelegatorRewardMsg {
+    pub validator: String,
+}
+
+#[cw_serde]
+pub struct DelegateFundsMsg {
+    pub validator: String,
+    pub amount: Coin,
+}
+
+#[cw_serde]
+pub struct UndelegateFundsMsg {
+    pub validator: String,
+    pub amount: Coin,}
+
+#[cw_serde]
+pub struct RedelegateFundsMsg {
+    pub src_validator: String,
+    pub dst_validator: String,
+    pub amount: Coin,}
 
 #[cw_serde]
 pub struct AddToWhitelistMsg {
