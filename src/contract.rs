@@ -62,14 +62,18 @@ pub fn execute(
                 return Err(ContractError::Unauthorized {});
             }
 
-            let balance_smaller_than_withdrawable = deps
-                .querier
-                .query_balance(env.contract.address.clone(), data.denom.clone())?
-                .amount
-                <
-                config.initial_amount
-                    - config.initial_amount * Uint128::from(state.last_withdrawn_time.u64() - config.start_time) / Uint128::from(config.end_time - config.start_time)
-                    - config.initial_amount * Uint128::from(config.end_time - env.block.time.seconds()) / Uint128::from(config.end_time - config.start_time);
+            let balance_smaller_than_withdrawable = if env.block.time.seconds() < config.end_time.u64() {
+                deps
+                    .querier
+                    .query_balance(env.contract.address.clone(), data.denom.clone())?
+                    .amount
+                    <
+                    config.initial_amount
+                        - config.initial_amount * Uint128::from(state.last_withdrawn_time.u64() - config.start_time) / Uint128::from(config.end_time - config.start_time)
+                        - config.initial_amount * Uint128::from(config.end_time - env.block.time.seconds()) / Uint128::from(config.end_time - config.start_time)
+            } else {
+                true
+            };
 
             let amount_to_withdraw = if data.denom == "uluna" {
                 if balance_smaller_than_withdrawable {
@@ -97,7 +101,7 @@ pub fn execute(
                 state.last_withdrawn_time + Uint64::try_from(deps
                     .querier
                     .query_balance(env.contract.address, data.denom.clone())?
-                    .amount / config.initial_amount / Uint128::from(config.end_time - config.start_time))?
+                    .amount / (config.initial_amount / Uint128::from(config.end_time - config.start_time))?)
             } else {
                 Uint64::new(env.block.time.seconds())
             };
