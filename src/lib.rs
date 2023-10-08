@@ -11,6 +11,7 @@ use cosmwasm_std::{Addr, Coin, Uint128, Uint64};
 pub struct Config {
     pub owner: Addr,
     pub recipient: Addr,
+    pub initial_amount: Uint128,
     pub start_time: Uint64,
     pub end_time: Uint64,
     pub whitelisted_addresses: Vec<Addr>,
@@ -25,6 +26,7 @@ pub struct State {
 pub struct InstantiateMsg {
     pub owner: String,
     pub recipient: String,
+    pub initial_amount: Uint128,
     pub start_time: Option<Uint64>,
     pub end_time: Uint64,
 }

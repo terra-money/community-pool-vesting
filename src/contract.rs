@@ -15,6 +15,7 @@ pub fn instantiate(
         &Config {
             owner: deps.api.addr_validate(&msg.owner)?,
             recipient: deps.api.addr_validate(&msg.recipient)?,
+            initial_amount: msg.initial_amount,
             start_time: msg
                 .start_time
                 .clone()
@@ -60,17 +61,28 @@ pub fn execute(
                 || env.block.time.seconds() < config.start_time.u64() {
                 return Err(ContractError::Unauthorized {});
             }
-            let amount_to_withdraw = deps
-                .querier
-                .query_balance(env.contract.address, data.denom.clone())?
-                .amount
-                / Uint128::from(config.end_time - config.start_time)
-                * Uint128::from(env.block.time.seconds() - state.last_updated_block.u64());
+            let amount_to_withdraw = if data.denom == "uluna" {
+                deps
+                    .querier
+                    .query_balance(env.contract.address, data.denom.clone())?
+                    .amount //total available
+                    - config.initial_amount * Uint128::from(state.last_updated_block.u64() - config.start_time) / Uint128::from(config.end_time - config.start_time) //minus already withdrawn amount
+                    - config.initial_amount * Uint128::from(config.end_time - env.block.time.seconds()) / Uint128::from(config.end_time - config.start_time) //minus amount not vested yet
+            } else {
+                deps
+                    .querier
+                    .query_balance(env.contract.address, data.denom.clone())?
+                    .amount
+            };
 
             STATE.save(
                 deps.storage,
                 &State {
-                    last_updated_block: Uint64::new(env.block.time.seconds()),
+                    last_updated_block: if data.denom == "uluna" { //only update the withdrawal block if the asset withdrawn is luna
+                        Uint64::new(env.block.time.seconds())
+                    } else {
+                        state.last_updated_block
+                    },
                 },
             )?;
 
@@ -166,6 +178,7 @@ pub fn execute(
                 &Config {
                     owner: config.owner,
                     recipient: config.recipient,
+                    initial_amount: config.initial_amount,
                     start_time: config.start_time,
                     end_time: config.end_time,
                     whitelisted_addresses: new_addresses.clone(),
@@ -191,6 +204,7 @@ pub fn execute(
                 &Config {
                     owner: config.owner,
                     recipient: config.recipient,
+                    initial_amount: config.initial_amount,
                     start_time: config.start_time,
                     end_time: config.end_time,
                     whitelisted_addresses: new_addresses.clone(),
@@ -207,6 +221,7 @@ pub fn execute(
             CONFIG.save(deps.storage, &Config {
                 owner: deps.api.addr_validate(&data.owner)?,
                 recipient: config.recipient,
+                initial_amount: config.initial_amount
                 start_time: config.start_time,
                 end_time: config.end_time,
                 whitelisted_addresses: config.whitelisted_addresses,
@@ -222,6 +237,7 @@ pub fn execute(
             CONFIG.save(deps.storage, &Config {
                 owner: config.owner,
                 recipient: deps.api.addr_validate(&data.recipient)?,
+                initial_amount: config.initial_amount,
                 start_time: config.start_time,
                 end_time: config.end_time,
                 whitelisted_addresses: config.whitelisted_addresses,
