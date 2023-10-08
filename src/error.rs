@@ -1,4 +1,4 @@
-use cosmwasm_std::StdError;
+use cosmwasm_std::{ConversionOverflowError, StdError};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -8,4 +8,10 @@ pub enum ContractError {
 
     #[error("Unauthorized")]
     Unauthorized {},
+}
+
+impl From<ConversionOverflowError> for ContractError {
+    fn from(value: ConversionOverflowError) -> Self {
+        ContractError::Std(StdError::generic_err(value.value))
+    }
 }
