@@ -82,12 +82,9 @@ pub fn execute(
                         .query_balance(env.contract.address.clone(), data.denom.clone())?
                         .amount
                 } else {
-                    deps
-                        .querier
-                        .query_balance(env.contract.address.clone(), data.denom.clone())?
-                        .amount //total available
-                        - config.initial_amount * Uint128::from(state.last_withdrawn_time.u64() - config.start_time) / Uint128::from(config.end_time - config.start_time) //minus already withdrawn amount
-                        - config.initial_amount * Uint128::from(config.end_time - env.block.time.seconds()) / Uint128::from(config.end_time - config.start_time) //minus amount not vested yet
+                    config.initial_amount
+                        - config.initial_amount * Uint128::from(state.last_withdrawn_time.u64() - config.start_time) / Uint128::from(config.end_time - config.start_time)
+                        - config.initial_amount * Uint128::from(config.end_time - env.block.time.seconds()) / Uint128::from(config.end_time - config.start_time)
                 }
 
             } else {
