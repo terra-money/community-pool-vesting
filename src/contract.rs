@@ -22,7 +22,7 @@ pub fn instantiate(
                 .unwrap_or(Uint64::new(env.block.time.seconds())),
             end_time: msg.end_time,
             //this whitelist is to designate users who can call the withdraw vested funds message. they cannot perform any other action
-            whitelisted_addresses: vec![deps.api.addr_validate(&msg.recipient)?, deps.api.addr_validate(&msg.recipient)?],
+            whitelisted_addresses: vec![deps.api.addr_validate(&msg.owner)?, deps.api.addr_validate(&msg.recipient)?],
         },
     )?;
 

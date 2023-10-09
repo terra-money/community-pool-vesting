@@ -1,6 +1,60 @@
+use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage};
+use cosmwasm_std::{Addr, BankMsg, BlockInfo, Coin, coin, ContractInfo, CosmosMsg, Env, MessageInfo, OwnedDeps, ReplyOn, SubMsg, Uint128, Uint64};
+use crate::contract::{execute, instantiate};
+use crate::{ExecuteMsg, InstantiateMsg, WithdrawVestedFundsMsg};
+
+fn instantiate_contract() -> (OwnedDeps<MockStorage, MockApi, MockQuerier>, Env, MessageInfo, MessageInfo) {
+    let mut deps = mock_dependencies();
+    let owner = mock_info("vlad", &[coin(1_000_000, "uluna")]);
+    let recipient = mock_info("javier", &[]);
+    let env = Env {
+        block: BlockInfo {
+            height: 0,
+            time: Default::default(),
+            chain_id: "phoenix-1".to_string(),
+        },
+        transaction: None,
+        contract: ContractInfo {
+            address: Addr::unchecked("community_pool_vesting_contract")
+        },
+    };
+
+    let instantiate_msg = InstantiateMsg {
+        owner: owner.sender.to_string(),
+        recipient: recipient.clone().sender.to_string(),
+        initial_amount: Uint128::new(1_000_000),
+        start_time: Some(Uint64::zero()),
+        end_time: Uint64::new(100),
+    };
+
+    instantiate(deps.as_mut(), env.clone(), owner.clone(), instantiate_msg).unwrap();
+
+    (deps, env, owner, recipient)
+}
+
 #[test]
 fn test_withdraw_vested_funds_owner() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(10);
+
+    let res = execute(deps.as_mut(), env, owner, ExecuteMsg::WithdrawVestedFunds(WithdrawVestedFundsMsg {
+        denom: "uluna".to_string(),
+    })).unwrap();
+
+    assert_eq!(
+        res.messages[0],
+        SubMsg {
+            id: 0,
+            msg: CosmosMsg::Bank(BankMsg::Send {
+                to_address: recipient.sender.to_string(),
+                amount: vec![Coin::new(10_000, "uluna")],
+            }),
+            gas_limit: None,
+            reply_on: ReplyOn::Never,
+        }
+    );
+
 }
 
 #[test]
