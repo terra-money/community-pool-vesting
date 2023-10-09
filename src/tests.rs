@@ -1,50 +1,50 @@
 #[test]
-fn test_withdraw_owner() {
+fn test_withdraw_vested_funds_owner() {
     todo!()
 }
 
 #[test]
-fn test_withdraw_whitelist() {
+fn test_withdraw_vested_funds_whitelist() {
     todo!()
 }
 
 #[test]
-fn test_withdraw_before_vesting_started() {
+fn test_withdraw_vested_funds_before_vesting_started() {
     todo!()
 }
 
 #[test]
-fn test_withdraw_zero_balance() {
+fn test_withdraw_vested_funds_zero_balance() {
     todo!()
 }
 
 #[test]
-fn test_withdraw_balance_smaller_than_withdrawable() {
+fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
     todo!()
 }
 
 #[test]
-fn test_withdraw_balance_larger_than_withdrawable() {
+fn test_withdraw_vested_funds_balance_larger_than_withdrawable() {
     todo!()
 }
 
 #[test]
-fn test_withdraw_balance_equal_to_withdrawable() {
+fn test_withdraw_vested_funds_balance_equal_to_withdrawable() {
     todo!()
 }
 
 #[test]
-fn test_withdraw_balance_vesting_ended() {
+fn test_withdraw_vested_funds_balance_vesting_ended() {
     todo!()
 }
 
 #[test]
-fn test_withdraw_balance_non_luna() {
+fn test_withdraw_vested_funds_balance_non_luna() {
     todo!()
 }
 
 #[test]
-fn test_withdraw_balance_unauthorized() { //neither owner nor whitelist
+fn test_withdraw_vested_funds_unauthorized() { //neither owner nor whitelist
     todo!()
 }
 
