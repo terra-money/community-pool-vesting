@@ -1,0 +1,68 @@
+# Based on https://github.com/actions-rs/example/blob/master/.github/workflows/quickstart.yml
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+name: Basic
+
+jobs:
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.68.2
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Install Cargo Make
+        uses: davidB/rust-cargo-make@v1
+        
+      - name: Run test
+        run: cargo make test
+        
+      - name: Build
+        run: cargo make build
+
+  lints:
+    name: Lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.68.2
+          target: wasm32-unknown-unknown
+          override: true
+          components: rustfmt, clippy
+
+      - name: Install Cargo Make
+        uses: davidB/rust-cargo-make@v1
+        
+      - name: Run format
+        run: cargo make fmt
+        
+      - name: Run lint
+        run: cargo make lint
+      
+      - name: Run Schema
+        run: cargo make schema
+  
+      - name: Schema Changes
+        run: git diff --exit-code contracts/alliance-oracle/schema
