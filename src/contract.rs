@@ -335,7 +335,12 @@ fn _withdraw_delegation_rewards(
         .query_delegation(env.contract.address.to_string(), validator);
     if let Ok(delegation) = delegation_result {
         if let Some(delegation) = delegation {
-            let rewards: Vec<Coin> = delegation.accumulated_rewards.iter().filter(|r| !r.amount.is_zero()).cloned().collect();
+            let rewards: Vec<Coin> = delegation
+                .accumulated_rewards
+                .iter()
+                .filter(|r| !r.amount.is_zero())
+                .cloned()
+                .collect();
             if rewards.is_empty() {
                 return None;
             }
