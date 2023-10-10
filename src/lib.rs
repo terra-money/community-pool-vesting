@@ -76,7 +76,8 @@ pub struct UndelegateFundsMsg {
 pub struct RedelegateFundsMsg {
     pub src_validator: String,
     pub dst_validator: String,
-    pub amount: Coin,}
+    pub amount: Coin,
+}
 
 #[cw_serde]
 pub struct AddToWhitelistMsg {

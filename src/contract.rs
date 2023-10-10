@@ -1,7 +1,14 @@
 use crate::state::{CONFIG, STATE};
-use crate::{AddToWhitelistMsg, Config, DelegateFundsMsg, ExecuteMsg, InstantiateMsg, QueryMsg, RedelegateFundsMsg, RemoveFromWhitelistMsg, UndelegateFundsMsg, UpdateOwnerMsg, UpdateRecipientMsg, WithdrawDelegatorRewardMsg, WithdrawVestedFundsMsg};
+use crate::{
+    AddToWhitelistMsg, Config, DelegateFundsMsg, ExecuteMsg, InstantiateMsg, QueryMsg,
+    RedelegateFundsMsg, RemoveFromWhitelistMsg, UndelegateFundsMsg, UpdateOwnerMsg,
+    UpdateRecipientMsg, WithdrawDelegatorRewardMsg, WithdrawVestedFundsMsg,
+};
 use crate::{ContractError, State};
-use cosmwasm_std::{entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Uint128, Uint64, DistributionMsg, StakingMsg};
+use cosmwasm_std::{
+    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, DistributionMsg, Env,
+    MessageInfo, Response, StakingMsg, StdResult, Uint128, Uint64,
+};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -23,7 +30,10 @@ pub fn instantiate(
                 .unwrap_or(Uint64::new(env.block.time.seconds())),
             end_time: msg.end_time,
             //this whitelist is to designate users who can call the withdraw vested funds message. they cannot perform any other action
-            whitelisted_addresses: vec![deps.api.addr_validate(&msg.owner)?, deps.api.addr_validate(&msg.recipient)?],
+            whitelisted_addresses: vec![
+                deps.api.addr_validate(&msg.owner)?,
+                deps.api.addr_validate(&msg.recipient)?,
+            ],
         },
     )?;
 
@@ -57,7 +67,9 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::WithdrawVestedFunds(data) => withdraw_vested_funds(deps, env, info, data),
-        ExecuteMsg::WithdrawCliffVestedFunds(data) => withdraw_cliff_vested_funds(deps, env, info, data),
+        ExecuteMsg::WithdrawCliffVestedFunds(data) => {
+            withdraw_cliff_vested_funds(deps, env, info, data)
+        }
         ExecuteMsg::WithdrawDelegatorReward(data) => claim_delegator_reward(deps, env, info, data),
         ExecuteMsg::DelegateFunds(data) => delegate_funds(deps, env, info, data),
         ExecuteMsg::UndelegateFunds(data) => undelegate_funds(deps, env, info, data),
@@ -69,45 +81,63 @@ pub fn execute(
     }
 }
 
-fn update_recipient(deps: DepsMut, info: MessageInfo, data: UpdateRecipientMsg) -> Result<Response, ContractError> {
+fn update_recipient(
+    deps: DepsMut,
+    info: MessageInfo,
+    data: UpdateRecipientMsg,
+) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
     }
-    CONFIG.save(deps.storage, &Config {
-        owner: config.owner,
-        recipient: deps.api.addr_validate(&data.recipient)?,
-        cliff_amount: config.cliff_amount,
-        vesting_amount: config.vesting_amount,
-        start_time: config.start_time,
-        end_time: config.end_time,
-        whitelisted_addresses: config.whitelisted_addresses,
-    })?;
+    CONFIG.save(
+        deps.storage,
+        &Config {
+            owner: config.owner,
+            recipient: deps.api.addr_validate(&data.recipient)?,
+            cliff_amount: config.cliff_amount,
+            vesting_amount: config.vesting_amount,
+            start_time: config.start_time,
+            end_time: config.end_time,
+            whitelisted_addresses: config.whitelisted_addresses,
+        },
+    )?;
     Ok(Response::new()
         .add_attribute("action", "update_recipient")
         .add_attribute("owner", format!("{:?}", data.recipient)))
 }
 
-fn update_owner(deps: DepsMut, info: MessageInfo, data: UpdateOwnerMsg) -> Result<Response, ContractError> {
+fn update_owner(
+    deps: DepsMut,
+    info: MessageInfo,
+    data: UpdateOwnerMsg,
+) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
     }
-    CONFIG.save(deps.storage, &Config {
-        owner: deps.api.addr_validate(&data.owner)?,
-        recipient: config.recipient,
-        cliff_amount: config.cliff_amount,
-        vesting_amount: config.vesting_amount,
-        start_time: config.start_time,
-        end_time: config.end_time,
-        whitelisted_addresses: config.whitelisted_addresses,
-    })?;
+    CONFIG.save(
+        deps.storage,
+        &Config {
+            owner: deps.api.addr_validate(&data.owner)?,
+            recipient: config.recipient,
+            cliff_amount: config.cliff_amount,
+            vesting_amount: config.vesting_amount,
+            start_time: config.start_time,
+            end_time: config.end_time,
+            whitelisted_addresses: config.whitelisted_addresses,
+        },
+    )?;
     Ok(Response::new()
         .add_attribute("action", "update_owner")
         .add_attribute("owner", format!("{:?}", data.owner)))
 }
 
-fn remove_from_whitelist(deps: DepsMut, info: MessageInfo, data: RemoveFromWhitelistMsg) -> Result<Response, ContractError> {
+fn remove_from_whitelist(
+    deps: DepsMut,
+    info: MessageInfo,
+    data: RemoveFromWhitelistMsg,
+) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
@@ -136,7 +166,11 @@ fn remove_from_whitelist(deps: DepsMut, info: MessageInfo, data: RemoveFromWhite
         .add_attribute("whitelisted_addresses", format!("{:?}", new_addresses)))
 }
 
-fn add_to_whitelist(deps: DepsMut, info: MessageInfo, data: AddToWhitelistMsg) -> Result<Response, ContractError> {
+fn add_to_whitelist(
+    deps: DepsMut,
+    info: MessageInfo,
+    data: AddToWhitelistMsg,
+) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
@@ -164,7 +198,12 @@ fn add_to_whitelist(deps: DepsMut, info: MessageInfo, data: AddToWhitelistMsg) -
         .add_attribute("whitelisted_addresses", format!("{:?}", new_addresses)))
 }
 
-fn redelegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: RedelegateFundsMsg) -> Result<Response, ContractError> {
+fn redelegate_funds(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    data: RedelegateFundsMsg,
+) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
@@ -174,8 +213,10 @@ fn redelegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: Redelegate
         dst_validator: data.dst_validator.clone(),
         amount: data.amount.clone(),
     });
-    let send_reward_msg_src = _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.src_validator);
-    let send_reward_msg_dst  = _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.dst_validator);
+    let send_reward_msg_src =
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.src_validator);
+    let send_reward_msg_dst =
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.dst_validator);
 
     let mut res = Response::new()
         .add_message(msg)
@@ -195,7 +236,12 @@ fn redelegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: Redelegate
     Ok(res)
 }
 
-fn undelegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: UndelegateFundsMsg) -> Result<Response, ContractError> {
+fn undelegate_funds(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    data: UndelegateFundsMsg,
+) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
@@ -204,7 +250,8 @@ fn undelegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: Undelegate
         validator: data.validator.clone(),
         amount: data.amount.clone(),
     });
-    let send_reward_msg = _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
+    let send_reward_msg =
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
 
     let mut res = Response::new()
         .add_message(msg)
@@ -219,7 +266,12 @@ fn undelegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: Undelegate
     Ok(res)
 }
 
-fn claim_delegator_reward(deps: DepsMut, env: Env, info: MessageInfo, data: WithdrawDelegatorRewardMsg) -> Result<Response, ContractError> {
+fn claim_delegator_reward(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    data: WithdrawDelegatorRewardMsg,
+) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
@@ -227,7 +279,8 @@ fn claim_delegator_reward(deps: DepsMut, env: Env, info: MessageInfo, data: With
     let msg = CosmosMsg::Distribution(DistributionMsg::WithdrawDelegatorReward {
         validator: data.validator.clone(),
     });
-    let send_reward_msg = _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
+    let send_reward_msg =
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
 
     let mut res = Response::new()
         .add_message(msg)
@@ -240,7 +293,12 @@ fn claim_delegator_reward(deps: DepsMut, env: Env, info: MessageInfo, data: With
     Ok(res)
 }
 
-fn delegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: DelegateFundsMsg) -> Result<Response, ContractError> {
+fn delegate_funds(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    data: DelegateFundsMsg,
+) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
@@ -249,7 +307,8 @@ fn delegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: DelegateFund
         validator: data.validator.clone(),
         amount: data.amount.clone(),
     });
-    let send_reward_msg = _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
+    let send_reward_msg =
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
 
     let mut res = Response::new()
         .add_message(msg)
@@ -265,11 +324,18 @@ fn delegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: DelegateFund
     Ok(res)
 }
 
-fn _withdraw_delegation_rewards(deps: &Deps, env: &Env, info: &MessageInfo, validator: &String) -> Option<CosmosMsg> {
-    let delegation_result = deps.querier.query_delegation(env.contract.address.to_string(), validator);
+fn _withdraw_delegation_rewards(
+    deps: &Deps,
+    env: &Env,
+    info: &MessageInfo,
+    validator: &String,
+) -> Option<CosmosMsg> {
+    let delegation_result = deps
+        .querier
+        .query_delegation(env.contract.address.to_string(), validator);
     if let Ok(delegation) = delegation_result {
         if let Some(delegation) = delegation {
-           return Some(CosmosMsg::Bank(BankMsg::Send {
+            return Some(CosmosMsg::Bank(BankMsg::Send {
                 to_address: info.sender.to_string(),
                 amount: delegation.accumulated_rewards,
             }));
@@ -278,13 +344,19 @@ fn _withdraw_delegation_rewards(deps: &Deps, env: &Env, info: &MessageInfo, vali
     return None;
 }
 
-fn withdraw_cliff_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: WithdrawVestedFundsMsg) -> Result<Response, ContractError> {
+fn withdraw_cliff_vested_funds(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    data: WithdrawVestedFundsMsg,
+) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut state = STATE.load(deps.storage)?;
 
     if !config.whitelisted_addresses.contains(&info.sender)
         || env.block.time.seconds() < config.start_time.u64()
-        || state.cliff_amount_withdrawn >= config.cliff_amount {
+        || state.cliff_amount_withdrawn >= config.cliff_amount
+    {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -316,15 +388,24 @@ fn withdraw_cliff_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data:
         .add_attribute("action", "withdraw_vested_funds")
         .add_attribute("denom", data.denom)
         .add_attribute("amount_to_withdraw", amount_to_withdraw)
-        .add_attribute("cliff_amount_withdrawn", state.cliff_amount_withdrawn.clone()))
+        .add_attribute(
+            "cliff_amount_withdrawn",
+            state.cliff_amount_withdrawn.clone(),
+        ))
 }
 
-fn withdraw_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: WithdrawVestedFundsMsg) -> Result<Response, ContractError> {
+fn withdraw_vested_funds(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    data: WithdrawVestedFundsMsg,
+) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
 
     if !config.whitelisted_addresses.contains(&info.sender)
-        || env.block.time.seconds() < config.start_time.u64() {
+        || env.block.time.seconds() < config.start_time.u64()
+    {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -342,8 +423,11 @@ fn withdraw_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: Withd
     let current_time = config.end_time.u64().min(env.block.time.seconds());
 
     let amount_withdrawable = config.vesting_amount
-        - config.vesting_amount * Uint128::from(state.last_withdrawn_time.u64() - config.start_time.u64()) / Uint128::from(config.end_time - config.start_time)
-        - config.vesting_amount * Uint128::from(config.end_time.u64() - current_time) / Uint128::from(config.end_time - config.start_time);
+        - config.vesting_amount
+            * Uint128::from(state.last_withdrawn_time.u64() - config.start_time.u64())
+            / Uint128::from(config.end_time - config.start_time)
+        - config.vesting_amount * Uint128::from(config.end_time.u64() - current_time)
+            / Uint128::from(config.end_time - config.start_time);
 
     let balance_smaller_than_withdrawable = if current_time < config.end_time.u64() {
         current_balance < amount_withdrawable
@@ -361,8 +445,13 @@ fn withdraw_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: Withd
         current_balance
     };
 
-    let last_withdrawn_time = if balance_smaller_than_withdrawable { //if balance is smaller than withdrawable, we set the withdrawn time in seconds to something smaller than the current blocktime
-        state.last_withdrawn_time + Uint64::try_from(amount_to_withdraw / (config.vesting_amount / Uint128::from(config.end_time - config.start_time)))?
+    let last_withdrawn_time = if balance_smaller_than_withdrawable {
+        //if balance is smaller than withdrawable, we set the withdrawn time in seconds to something smaller than the current blocktime
+        state.last_withdrawn_time
+            + Uint64::try_from(
+                amount_to_withdraw
+                    / (config.vesting_amount / Uint128::from(config.end_time - config.start_time)),
+            )?
     } else {
         Uint64::new(current_time)
     };
@@ -370,12 +459,13 @@ fn withdraw_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: Withd
     STATE.save(
         deps.storage,
         &State {
-            last_withdrawn_time: if data.denom == "uluna" { //only update the withdrawal block if the asset withdrawn is luna
+            last_withdrawn_time: if data.denom == "uluna" {
+                //only update the withdrawal block if the asset withdrawn is luna
                 last_withdrawn_time
             } else {
                 state.last_withdrawn_time
             },
-            cliff_amount_withdrawn: state.cliff_amount_withdrawn
+            cliff_amount_withdrawn: state.cliff_amount_withdrawn,
         },
     )?;
 
