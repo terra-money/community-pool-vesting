@@ -9,6 +9,9 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("Withdraw cliff amount first")]
+    WithdrawCliffFirst {},
+
     #[error("Nothing to withdraw")]
     NothingToWithdraw {},
 }

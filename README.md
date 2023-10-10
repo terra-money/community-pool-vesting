@@ -1,1 +1,1 @@
-# community-pool-vesting
+# Community Pool Vesting Contract

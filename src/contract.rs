@@ -335,9 +335,13 @@ fn _withdraw_delegation_rewards(
         .query_delegation(env.contract.address.to_string(), validator);
     if let Ok(delegation) = delegation_result {
         if let Some(delegation) = delegation {
+            let rewards: Vec<Coin> = delegation.accumulated_rewards.iter().filter(|r| !r.amount.is_zero()).cloned().collect();
+            if rewards.is_empty() {
+                return None;
+            }
             return Some(CosmosMsg::Bank(BankMsg::Send {
                 to_address: info.sender.to_string(),
-                amount: delegation.accumulated_rewards,
+                amount: rewards,
             }));
         }
     }
@@ -411,7 +415,7 @@ fn withdraw_vested_funds(
 
     // Need to withdraw cliff amount before linear vesting amount
     if state.cliff_amount_withdrawn < config.cliff_amount {
-        return Err(ContractError::Unauthorized {});
+        return Err(ContractError::WithdrawCliffFirst {});
     }
 
     let current_balance = deps
