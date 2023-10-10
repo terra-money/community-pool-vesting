@@ -2,3 +2,5 @@
 .DS_Store
 target
 artifacts
+node_modules
+.env
