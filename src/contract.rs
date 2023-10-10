@@ -15,7 +15,8 @@ pub fn instantiate(
         &Config {
             owner: deps.api.addr_validate(&msg.owner)?,
             recipient: deps.api.addr_validate(&msg.recipient)?,
-            initial_amount: msg.initial_amount,
+            cliff_amount: msg.cliff_amount,
+            vesting_amount: msg.vesting_amount,
             start_time: msg
                 .start_time
                 .clone()
@@ -32,6 +33,7 @@ pub fn instantiate(
             last_withdrawn_time: msg
                 .start_time
                 .unwrap_or(Uint64::new(env.block.time.seconds())),
+            cliff_amount_withdrawn: Uint128::zero(),
         },
     )?;
 
@@ -55,6 +57,7 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::WithdrawVestedFunds(data) => withdraw_vested_funds(deps, env, info, data),
+        ExecuteMsg::WithdrawCliffVestedFunds(data) => withdraw_cliff_vested_funds(deps, env, info, data),
         ExecuteMsg::WithdrawDelegatorReward(data) => claim_delegator_reward(deps, env, info, data),
         ExecuteMsg::DelegateFunds(data) => delegate_funds(deps, env, info, data),
         ExecuteMsg::UndelegateFunds(data) => undelegate_funds(deps, env, info, data),
@@ -74,7 +77,8 @@ fn update_recipient(deps: DepsMut, info: MessageInfo, data: UpdateRecipientMsg) 
     CONFIG.save(deps.storage, &Config {
         owner: config.owner,
         recipient: deps.api.addr_validate(&data.recipient)?,
-        initial_amount: config.initial_amount,
+        cliff_amount: config.cliff_amount,
+        vesting_amount: config.vesting_amount,
         start_time: config.start_time,
         end_time: config.end_time,
         whitelisted_addresses: config.whitelisted_addresses,
@@ -92,7 +96,8 @@ fn update_owner(deps: DepsMut, info: MessageInfo, data: UpdateOwnerMsg) -> Resul
     CONFIG.save(deps.storage, &Config {
         owner: deps.api.addr_validate(&data.owner)?,
         recipient: config.recipient,
-        initial_amount: config.initial_amount,
+        cliff_amount: config.cliff_amount,
+        vesting_amount: config.vesting_amount,
         start_time: config.start_time,
         end_time: config.end_time,
         whitelisted_addresses: config.whitelisted_addresses,
@@ -119,7 +124,8 @@ fn remove_from_whitelist(deps: DepsMut, info: MessageInfo, data: RemoveFromWhite
         &Config {
             owner: config.owner,
             recipient: config.recipient,
-            initial_amount: config.initial_amount,
+            cliff_amount: config.cliff_amount,
+            vesting_amount: config.vesting_amount,
             start_time: config.start_time,
             end_time: config.end_time,
             whitelisted_addresses: new_addresses.clone(),
@@ -146,7 +152,8 @@ fn add_to_whitelist(deps: DepsMut, info: MessageInfo, data: AddToWhitelistMsg) -
         &Config {
             owner: config.owner,
             recipient: config.recipient,
-            initial_amount: config.initial_amount,
+            cliff_amount: config.cliff_amount,
+            vesting_amount: config.vesting_amount,
             start_time: config.start_time,
             end_time: config.end_time,
             whitelisted_addresses: new_addresses.clone(),
@@ -271,6 +278,43 @@ fn _withdraw_delegation_rewards(deps: &Deps, env: &Env, info: &MessageInfo, vali
     return None;
 }
 
+fn withdraw_cliff_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: WithdrawVestedFundsMsg) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let mut state = STATE.load(deps.storage)?;
+
+    if !config.whitelisted_addresses.contains(&info.sender)
+        || env.block.time.seconds() < config.start_time.u64()
+        || state.cliff_amount_withdrawn >= config.cliff_amount {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let current_balance = deps
+        .querier
+        .query_balance(env.contract.address.clone(), data.denom.clone())?
+        .amount;
+
+    let amount_to_withdraw = if data.denom == "uluna" {
+        let withdrawable = current_balance.min(config.cliff_amount - state.cliff_amount_withdrawn);
+        state.cliff_amount_withdrawn += withdrawable;
+        STATE.save(deps.storage, &state)?;
+        withdrawable
+    } else {
+        current_balance
+    };
+
+    let msg = CosmosMsg::Bank(BankMsg::Send {
+        to_address: config.recipient.to_string(),
+        amount: vec![Coin::new(amount_to_withdraw.u128(), data.denom.clone())],
+    });
+
+    Ok(Response::new()
+        .add_message(msg)
+        .add_attribute("action", "withdraw_vested_funds")
+        .add_attribute("denom", data.denom)
+        .add_attribute("amount_to_withdraw", amount_to_withdraw)
+        .add_attribute("cliff_amount_withdrawn", state.cliff_amount_withdrawn.clone()))
+}
+
 fn withdraw_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: WithdrawVestedFundsMsg) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
@@ -280,44 +324,43 @@ fn withdraw_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: Withd
         return Err(ContractError::Unauthorized {});
     }
 
-    let balance_smaller_than_withdrawable = if env.block.time.seconds() < config.end_time.u64() {
-        deps
-            .querier
-            .query_balance(env.contract.address.clone(), data.denom.clone())?
-            .amount
-            <
-            config.initial_amount
-                - config.initial_amount * Uint128::from(state.last_withdrawn_time.u64() - config.start_time.u64()) / Uint128::from(config.end_time - config.start_time)
-                - config.initial_amount * Uint128::from(config.end_time.u64() - env.block.time.seconds()) / Uint128::from(config.end_time - config.start_time)
+    // Need to withdraw cliff amount before linear vesting amount
+    if state.cliff_amount_withdrawn < config.cliff_amount {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let current_balance = deps
+        .querier
+        .query_balance(env.contract.address.clone(), data.denom.clone())?
+        .amount;
+
+    // Use end time here to prevent overflow
+    let current_time = config.end_time.u64().min(env.block.time.seconds());
+
+    let amount_withdrawable = config.vesting_amount
+        - config.vesting_amount * Uint128::from(state.last_withdrawn_time.u64() - config.start_time.u64()) / Uint128::from(config.end_time - config.start_time)
+        - config.vesting_amount * Uint128::from(config.end_time.u64() - current_time) / Uint128::from(config.end_time - config.start_time);
+
+    let balance_smaller_than_withdrawable = if current_time < config.end_time.u64() {
+        current_balance < amount_withdrawable
     } else {
         true
     };
 
-    let amount_to_withdraw = if data.denom == "uluna" {
+    let mut amount_to_withdraw = if data.denom == "uluna" {
         if balance_smaller_than_withdrawable {
-            deps
-                .querier
-                .query_balance(env.contract.address.clone(), data.denom.clone())?
-                .amount
+            current_balance
         } else {
-            config.initial_amount
-                - config.initial_amount * Uint128::from(state.last_withdrawn_time.u64() - config.start_time.u64()) / Uint128::from(config.end_time - config.start_time)
-                - config.initial_amount * Uint128::from(config.end_time.u64() - env.block.time.seconds()) / Uint128::from(config.end_time - config.start_time)
+            amount_withdrawable
         }
     } else {
-        deps
-            .querier
-            .query_balance(env.contract.address.clone(), data.denom.clone())?
-            .amount
+        current_balance
     };
 
     let last_withdrawn_time = if balance_smaller_than_withdrawable { //if balance is smaller than withdrawable, we set the withdrawn time in seconds to something smaller than the current blocktime
-        state.last_withdrawn_time + Uint64::try_from(deps
-            .querier
-            .query_balance(env.contract.address, data.denom.clone())?
-            .amount / (config.initial_amount / Uint128::from(config.end_time - config.start_time)))?
+        state.last_withdrawn_time + Uint64::try_from(amount_to_withdraw / (config.vesting_amount / Uint128::from(config.end_time - config.start_time)))?
     } else {
-        Uint64::new(env.block.time.seconds())
+        Uint64::new(current_time)
     };
 
     STATE.save(
@@ -328,6 +371,7 @@ fn withdraw_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: Withd
             } else {
                 state.last_withdrawn_time
             },
+            cliff_amount_withdrawn: state.cliff_amount_withdrawn
         },
     )?;
 
