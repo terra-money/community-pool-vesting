@@ -411,7 +411,7 @@ fn withdraw_vested_funds(
 
     // Need to withdraw cliff amount before linear vesting amount
     if state.cliff_amount_withdrawn < config.cliff_amount {
-        return Err(ContractError::Unauthorized {});
+        return Err(ContractError::WithdrawCliffFirst {});
     }
 
     let current_balance = deps

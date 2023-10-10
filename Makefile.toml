@@ -59,3 +59,8 @@ ts-node ./scripts/deploy.ts
 script = """
 ts-node ./scripts/delegate-flow.ts
 """
+
+[tasks.withdraw-flow]
+script = """
+ts-node ./scripts/withdraw-flow.ts
+"""

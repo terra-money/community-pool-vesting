@@ -1,7 +1,6 @@
 import * as dotenv from 'dotenv'
-import { MnemonicKey, MsgStoreCode, MsgInstantiateContract, LCDClient, Coins, MsgExecuteContract } from '@terra-money/feather.js';
+import { MnemonicKey, LCDClient, MsgExecuteContract } from '@terra-money/feather.js';
 import * as fs from 'fs';
-import moment from 'moment';
 
 dotenv.config()
 
@@ -31,19 +30,17 @@ const init = async () => {
                 "delegate_funds": {
                     "validator": "terravaloper1zdpgj8am5nqqvht927k3etljyl6a52kwqndjz2",
                     "amount": {
-                        "amount": "300000",
+                        "amount" : "500000",
                         "denom": "uluna"
                     },
                 }
             },
         )],
-        memo: "Simple delegation throught Community Pool Vesting Smart Contract",
         chainID: "pisco-1",
     });
     let broadcastRes = await lcd.tx.broadcastSync(tx, "pisco-1");
     console.log(`Delegation broadcasted successfully with hash: ${broadcastRes.txhash}`)
     await new Promise(resolve => setTimeout(resolve, 30000));
-
 
     // Execute an redelegation from the smart contract and wait another 30 seconds
     tx = await wallet.createAndSignTx({
@@ -55,18 +52,17 @@ const init = async () => {
                     "src_validator": "terravaloper1zdpgj8am5nqqvht927k3etljyl6a52kwqndjz2",
                     "dst_validator": "terravaloper13sulzl3p0wk2t0x7aws7w8glmrh83z4y8atvgr",
                     "amount": {
-                        "amount": "100000",
+                        "amount" : "100000",
                         "denom": "uluna"
                     },
                 }
             },
         )],
-        memo: "Simple redelegation throught Community Pool Vesting Smart Contract",
         chainID: "pisco-1",
     });
     broadcastRes = await lcd.tx.broadcastSync(tx, "pisco-1");
-    console.log(`Redelegation broadcasted successfully with hash: ${broadcastRes.txhash}`)
     await new Promise(resolve => setTimeout(resolve, 30000));
+    console.log(`Redelegation broadcasted successfully with hash: ${broadcastRes.txhash}`)
 
     // Execute an undelegation from the smart contract
     tx = await wallet.createAndSignTx({
@@ -77,17 +73,33 @@ const init = async () => {
                 "undelegate_funds": {
                     "validator": "terravaloper1zdpgj8am5nqqvht927k3etljyl6a52kwqndjz2",
                     "amount": {
-                        "amount": "100000",
+                        "amount" : "100000",
                         "denom": "uluna"
                     },
                 }
             },
         )],
-        memo: "Simple delegation throught Community Pool Vesting Smart Contract",
         chainID: "pisco-1",
     });
     broadcastRes = await lcd.tx.broadcastSync(tx, "pisco-1");
+    await new Promise(resolve => setTimeout(resolve, 30000));
     console.log(`Undelegation broadcasted successfully with hash: ${broadcastRes.txhash}`)
+    
+    // Execute withdraw delegation rewards
+    tx = await wallet.createAndSignTx({
+        msgs: [new MsgExecuteContract(
+            ownerAddress.accAddress("terra"),
+            contractAddres,
+            {
+                "withdraw_delegator_reward": {
+                    "validator": "terravaloper1zdpgj8am5nqqvht927k3etljyl6a52kwqndjz2"
+                }
+            },
+        )],
+        chainID: "pisco-1",
+    });
+    broadcastRes = await lcd.tx.broadcastSync(tx, "pisco-1");
+    console.log(`Withdraw Delegator Reward broadcasted successfully with hash: ${broadcastRes.txhash}`)
 }
 
 init().catch(e => console.log(e))
