@@ -52,7 +52,7 @@ const init = async () => {
                     "src_validator": "terravaloper1zdpgj8am5nqqvht927k3etljyl6a52kwqndjz2",
                     "dst_validator": "terravaloper13sulzl3p0wk2t0x7aws7w8glmrh83z4y8atvgr",
                     "amount": {
-                        "amount" : "100000",
+                        "amount" : "250000",
                         "denom": "uluna"
                     },
                 }
