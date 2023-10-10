@@ -55,10 +55,10 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::WithdrawVestedFunds(data) => withdraw_vested_funds(deps, env, info, data),
-        ExecuteMsg::WithdrawDelegatorReward(data) => withdraw_delegator_reward(deps, info, data),
-        ExecuteMsg::DelegateFunds(data) => delegate_funds(deps, info, data),
-        ExecuteMsg::UndelegateFunds(data) => undelegate_funds(deps, info, data),
-        ExecuteMsg::RedelegateFunds(data) => redelegate_funds(deps, info, data),
+        ExecuteMsg::WithdrawDelegatorReward(data) => claim_delegator_reward(deps, env, info, data),
+        ExecuteMsg::DelegateFunds(data) => delegate_funds(deps, env, info, data),
+        ExecuteMsg::UndelegateFunds(data) => undelegate_funds(deps, env, info, data),
+        ExecuteMsg::RedelegateFunds(data) => redelegate_funds(deps, env, info, data),
         ExecuteMsg::AddToWhitelist(data) => add_to_whitelist(deps, info, data),
         ExecuteMsg::RemoveFromWhitelist(data) => remove_from_whitelist(deps, info, data),
         ExecuteMsg::UpdateOwner(data) => update_owner(deps, info, data),
@@ -157,7 +157,7 @@ fn add_to_whitelist(deps: DepsMut, info: MessageInfo, data: AddToWhitelistMsg) -
         .add_attribute("whitelisted_addresses", format!("{:?}", new_addresses)))
 }
 
-fn redelegate_funds(deps: DepsMut, info: MessageInfo, data: RedelegateFundsMsg) -> Result<Response, ContractError> {
+fn redelegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: RedelegateFundsMsg) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
@@ -167,18 +167,28 @@ fn redelegate_funds(deps: DepsMut, info: MessageInfo, data: RedelegateFundsMsg) 
         dst_validator: data.dst_validator.clone(),
         amount: data.amount.clone(),
     });
+    let send_reward_msg_src = _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.src_validator);
+    let send_reward_msg_dst  = _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.dst_validator);
 
-    Ok(Response::new()
+    let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "redelegate_funds")
         .add_attribute("src_validator", data.src_validator)
         .add_attribute("dst_validator", data.dst_validator)
         .add_attribute("denom", data.amount.denom)
-        .add_attribute("amount", data.amount.amount)
-    )
+        .add_attribute("amount", data.amount.amount);
+
+    if let Some(send_reward_msg) = send_reward_msg_src {
+        res = res.add_message(send_reward_msg);
+    }
+    if let Some(send_reward_msg) = send_reward_msg_dst {
+        res = res.add_message(send_reward_msg);
+    }
+
+    Ok(res)
 }
 
-fn undelegate_funds(deps: DepsMut, info: MessageInfo, data: UndelegateFundsMsg) -> Result<Response, ContractError> {
+fn undelegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: UndelegateFundsMsg) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
@@ -187,17 +197,22 @@ fn undelegate_funds(deps: DepsMut, info: MessageInfo, data: UndelegateFundsMsg) 
         validator: data.validator.clone(),
         amount: data.amount.clone(),
     });
+    let send_reward_msg = _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
 
-    Ok(Response::new()
+    let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "undelegate_funds")
         .add_attribute("validator", data.validator)
         .add_attribute("denom", data.amount.denom)
-        .add_attribute("amount", data.amount.amount)
-    )
+        .add_attribute("amount", data.amount.amount);
+
+    if let Some(send_reward_msg) = send_reward_msg {
+        res = res.add_message(send_reward_msg);
+    }
+    Ok(res)
 }
 
-fn withdraw_delegator_reward(deps: DepsMut, info: MessageInfo, data: WithdrawDelegatorRewardMsg) -> Result<Response, ContractError> {
+fn claim_delegator_reward(deps: DepsMut, env: Env, info: MessageInfo, data: WithdrawDelegatorRewardMsg) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
@@ -205,13 +220,20 @@ fn withdraw_delegator_reward(deps: DepsMut, info: MessageInfo, data: WithdrawDel
     let msg = CosmosMsg::Distribution(DistributionMsg::WithdrawDelegatorReward {
         validator: data.validator.clone(),
     });
-    Ok(Response::new()
+    let send_reward_msg = _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
+
+    let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "withdraw_delegator_rewards")
-        .add_attribute("validator", data.validator))
+        .add_attribute("validator", data.validator);
+
+    if let Some(send_reward_msg) = send_reward_msg {
+        res = res.add_message(send_reward_msg);
+    }
+    Ok(res)
 }
 
-fn delegate_funds(deps: DepsMut, info: MessageInfo, data: DelegateFundsMsg) -> Result<Response, ContractError> {
+fn delegate_funds(deps: DepsMut, env: Env, info: MessageInfo, data: DelegateFundsMsg) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
@@ -220,14 +242,33 @@ fn delegate_funds(deps: DepsMut, info: MessageInfo, data: DelegateFundsMsg) -> R
         validator: data.validator.clone(),
         amount: data.amount.clone(),
     });
+    let send_reward_msg = _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
 
-    Ok(Response::new()
+    let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "delegate_funds")
         .add_attribute("validator", data.validator)
         .add_attribute("denom", data.amount.denom)
-        .add_attribute("amount", data.amount.amount)
-    )
+        .add_attribute("amount", data.amount.amount);
+
+    if let Some(send_reward_msg) = send_reward_msg {
+        res = res.add_message(send_reward_msg);
+    }
+
+    Ok(res)
+}
+
+fn _withdraw_delegation_rewards(deps: &Deps, env: &Env, info: &MessageInfo, validator: &String) -> Option<CosmosMsg> {
+    let delegation_result = deps.querier.query_delegation(env.contract.address.to_string(), validator);
+    if let Ok(delegation) = delegation_result {
+        if let Some(delegation) = delegation {
+           return Some(CosmosMsg::Bank(BankMsg::Send {
+                to_address: info.sender.to_string(),
+                amount: delegation.accumulated_rewards,
+            }));
+        }
+    }
+    return None;
 }
 
 fn withdraw_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: WithdrawVestedFundsMsg) -> Result<Response, ContractError> {
