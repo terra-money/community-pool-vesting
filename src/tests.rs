@@ -195,7 +195,7 @@ fn test_withdraw_vested_funds_before_withdrawing_cliff_vested() {
     )
     .unwrap_err();
 
-    assert_eq!(res, ContractError::Unauthorized {});
+    assert_eq!(res, ContractError::WithdrawCliffFirst{} );
 }
 
 #[test]
