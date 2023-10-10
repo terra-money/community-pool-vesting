@@ -26,7 +26,6 @@ pub fn instantiate(
             vesting_amount: msg.vesting_amount,
             start_time: msg
                 .start_time
-                .clone()
                 .unwrap_or(Uint64::new(env.block.time.seconds())),
             end_time: msg.end_time,
             //this whitelist is to designate users who can call the withdraw vested funds message. they cannot perform any other action
@@ -333,24 +332,22 @@ fn _withdraw_delegation_rewards(
     let delegation_result = deps
         .querier
         .query_delegation(env.contract.address.to_string(), validator);
-    if let Ok(delegation) = delegation_result {
-        if let Some(delegation) = delegation {
-            let rewards: Vec<Coin> = delegation
-                .accumulated_rewards
-                .iter()
-                .filter(|r| !r.amount.is_zero())
-                .cloned()
-                .collect();
-            if rewards.is_empty() {
-                return None;
-            }
-            return Some(CosmosMsg::Bank(BankMsg::Send {
-                to_address: info.sender.to_string(),
-                amount: rewards,
-            }));
+    if let Ok(Some(delegation)) = delegation_result {
+        let rewards: Vec<Coin> = delegation
+            .accumulated_rewards
+            .iter()
+            .filter(|r| !r.amount.is_zero())
+            .cloned()
+            .collect();
+        if rewards.is_empty() {
+            return None;
         }
+        return Some(CosmosMsg::Bank(BankMsg::Send {
+            to_address: info.sender.to_string(),
+            amount: rewards,
+        }));
     }
-    return None;
+    None
 }
 
 fn withdraw_cliff_vested_funds(
@@ -371,7 +368,7 @@ fn withdraw_cliff_vested_funds(
 
     let current_balance = deps
         .querier
-        .query_balance(env.contract.address.clone(), data.denom.clone())?
+        .query_balance(env.contract.address, data.denom.clone())?
         .amount;
 
     let amount_to_withdraw = if data.denom == "uluna" {
@@ -397,10 +394,7 @@ fn withdraw_cliff_vested_funds(
         .add_attribute("action", "withdraw_vested_funds")
         .add_attribute("denom", data.denom)
         .add_attribute("amount_to_withdraw", amount_to_withdraw)
-        .add_attribute(
-            "cliff_amount_withdrawn",
-            state.cliff_amount_withdrawn.clone(),
-        ))
+        .add_attribute("cliff_amount_withdrawn", state.cliff_amount_withdrawn))
 }
 
 fn withdraw_vested_funds(
@@ -444,7 +438,7 @@ fn withdraw_vested_funds(
         true
     };
 
-    let mut amount_to_withdraw = if data.denom == "uluna" {
+    let amount_to_withdraw = if data.denom == "uluna" {
         if balance_smaller_than_withdrawable {
             current_balance
         } else {

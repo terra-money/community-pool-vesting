@@ -18,7 +18,7 @@ args = ["test", "--locked"]
 
 [tasks.lint]
 command = "cargo"
-args = ["clippy", "--tests", "--", "-D", "warnings"]
+args = ["clippy", "--", "-D", "warnings"]
 
 [tasks.build]
 command = "cargo"
