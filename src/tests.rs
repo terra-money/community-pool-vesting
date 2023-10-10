@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
-use cosmwasm_std::testing::{MOCK_CONTRACT_ADDR, mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage};
-use cosmwasm_std::{Addr, BankMsg, BlockInfo, Coin, coin, ContractInfo, CosmosMsg, DepsMut, Empty, Env, MessageInfo, OwnedDeps, ReplyOn, Response, SubMsg, Timestamp, Uint128, Uint64};
-use crate::contract::{execute, instantiate};
-use crate::{ContractError, ExecuteMsg, InstantiateMsg, State, WithdrawVestedFundsMsg};
-use crate::state::STATE;
+use cosmwasm_std::testing::{MOCK_CONTRACT_ADDR, mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage, StakingQuerier};
+use cosmwasm_std::{Addr, BankMsg, BlockInfo, Coin, coin, ContractInfo, CosmosMsg, DepsMut, DistributionMsg, Empty, Env, from_binary, MessageInfo, OwnedDeps, ReplyOn, Response, StakingMsg, SubMsg, Timestamp, Uint128, Uint64};
+use crate::contract::{execute, instantiate, query};
+use crate::{AddToWhitelistMsg, Config, ContractError, DelegateFundsMsg, ExecuteMsg, InstantiateMsg, QueryMsg, RedelegateFundsMsg, RemoveFromWhitelistMsg, State, UndelegateFundsMsg, UpdateOwnerMsg, UpdateRecipientMsg, WithdrawDelegatorRewardMsg, WithdrawVestedFundsMsg};
+use crate::state::{CONFIG, STATE};
 
 const CONTRACT_ADDR: &str = "community_pool_vesting_contract";
 
@@ -96,8 +96,43 @@ fn test_withdraw_vested_funds_owner() {
 
 #[test]
 fn test_withdraw_vested_funds_whitelist() {
-    todo!()
-}
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(10);
+
+    let mut res = execute(deps.as_mut(), env.clone(), recipient.clone(), ExecuteMsg::WithdrawCliffVestedFunds(WithdrawVestedFundsMsg {
+        denom: "uluna".to_string(),
+    })).unwrap();
+    assert_eq!(
+        res.messages[0],
+        SubMsg {
+            id: 0,
+            msg: CosmosMsg::Bank(BankMsg::Send {
+                to_address: recipient.sender.to_string(),
+                amount: vec![Coin::new(100_000, "uluna")],
+            }),
+            gas_limit: None,
+            reply_on: ReplyOn::Never,
+        }
+    );
+    deps.querier.update_balance(CONTRACT_ADDR, vec![Coin::new(1_000_000, "uluna")]);
+
+    res = execute(deps.as_mut(), env, recipient.clone(), ExecuteMsg::WithdrawVestedFunds(WithdrawVestedFundsMsg {
+        denom: "uluna".to_string(),
+    })).unwrap();
+
+    assert_eq!(
+        res.messages[0],
+        SubMsg {
+            id: 0,
+            msg: CosmosMsg::Bank(BankMsg::Send {
+                to_address: recipient.sender.to_string(),
+                amount: vec![Coin::new(100_000, "uluna")],
+            }),
+            gas_limit: None,
+            reply_on: ReplyOn::Never,
+        }
+    );}
 
 #[test]
 fn test_withdraw_vested_funds_before_withdrawing_cliff_vested() {
@@ -155,12 +190,43 @@ fn test_withdraw_cliff_vested_funds_with_not_enough_balance() {
 
 #[test]
 fn test_withdraw_vested_funds_before_vesting_started() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.minus_seconds(5);
+
+    execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::WithdrawCliffVestedFunds(WithdrawVestedFundsMsg {
+        denom: "uluna".to_string(),
+    })).unwrap_err();
 }
 
 #[test]
 fn test_withdraw_vested_funds_zero_balance() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(10);
+    deps.querier.update_balance(CONTRACT_ADDR, vec![Coin::new(0, "uluna")]);
+
+    let mut res = execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::WithdrawCliffVestedFunds(WithdrawVestedFundsMsg {
+        denom: "uluna".to_string(),
+    })).unwrap_err();
+    assert_eq!(
+        res,
+        ContractError::NothingToWithdraw {}
+    );
+
+    STATE.save(deps.as_mut().storage, &State {
+        cliff_amount_withdrawn: Uint128::new(100_000),
+        last_withdrawn_time: Uint64::new(10),
+    }).unwrap();
+
+    let res = execute(deps.as_mut(), env, owner, ExecuteMsg::WithdrawVestedFunds(WithdrawVestedFundsMsg {
+        denom: "uluna".to_string(),
+    })).unwrap_err();
+
+    assert_eq!(
+        res,
+        ContractError::NothingToWithdraw {}
+    );
 }
 
 #[test]
@@ -259,115 +325,416 @@ fn test_withdraw_vested_funds_balance_vesting_ended() {
 
 #[test]
 fn test_withdraw_vested_funds_balance_non_luna() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    deps.querier.update_balance(CONTRACT_ADDR, vec![Coin::new(1000_000, "uluna"), Coin::new(1000_000, "uusd")]);
+
+    let res = execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::WithdrawCliffVestedFunds(WithdrawVestedFundsMsg {
+        denom: "uusd".to_string(),
+    })).unwrap();
+
+    assert_eq!(
+        res.messages[0],
+        SubMsg {
+            id: 0,
+            msg: CosmosMsg::Bank(BankMsg::Send {
+                to_address: recipient.sender.to_string(),
+                amount: vec![Coin::new(1000_000, "uusd")],
+            }),
+            gas_limit: None,
+            reply_on: ReplyOn::Never,
+        }
+    );
+
+    STATE.save(deps.as_mut().storage, &State {
+        last_withdrawn_time: Uint64::new(10),
+        cliff_amount_withdrawn: Uint128::new(100_000),
+    }).unwrap();
+
+    let res = execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::WithdrawVestedFunds(WithdrawVestedFundsMsg {
+        denom: "uusd".to_string(),
+    })).unwrap();
+
+    assert_eq!(
+        res.messages[0],
+        SubMsg {
+            id: 0,
+            msg: CosmosMsg::Bank(BankMsg::Send {
+                to_address: recipient.sender.to_string(),
+                amount: vec![Coin::new(1000_000, "uusd")],
+            }),
+            gas_limit: None,
+            reply_on: ReplyOn::Never,
+        }
+    );
 }
 
 #[test]
 fn test_withdraw_vested_funds_unauthorized() { //neither owner nor whitelist
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    deps.querier.update_balance(CONTRACT_ADDR, vec![Coin::new(1000_000, "uluna")]);
+
+    let info = mock_info("random", &[]);
+
+    let res = execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::WithdrawCliffVestedFunds(WithdrawVestedFundsMsg {
+        denom: "uluna".to_string(),
+    })).unwrap_err();
+
+    assert_eq!(
+        res,
+        ContractError::Unauthorized {}
+    );
+
+    STATE.save(deps.as_mut().storage, &State {
+        last_withdrawn_time: Uint64::new(10),
+        cliff_amount_withdrawn: Uint128::new(100_000),
+    }).unwrap();
+
+    let res = execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::WithdrawVestedFunds(WithdrawVestedFundsMsg {
+        denom: "uluna".to_string(),
+    })).unwrap_err();
+
+    assert_eq!(
+        res,
+        ContractError::Unauthorized {},
+    );
 }
 
 #[test]
 fn test_add_to_whitelist_successful() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::AddToWhitelist(AddToWhitelistMsg{
+        addresses: vec![Addr::unchecked("warp")],
+    })).unwrap();
+
+    let config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(config.whitelisted_addresses, vec![Addr::unchecked("vlad"),Addr::unchecked("javier"),Addr::unchecked("warp")]);
 }
 
 #[test]
 fn test_add_to_whitelist_not_owner() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let info = mock_info("random", &[]);
+
+    execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::AddToWhitelist(AddToWhitelistMsg{
+        addresses: vec![Addr::unchecked("warp")],
+    })).unwrap_err();
 }
 
 #[test]
 fn test_add_to_whitelist_already_included() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::AddToWhitelist(AddToWhitelistMsg{
+        addresses: vec![Addr::unchecked("javier")],
+    })).unwrap();
+
+    let config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(config.whitelisted_addresses, vec![Addr::unchecked("vlad"),Addr::unchecked("javier")]);
 }
 
 #[test]
 fn test_remove_from_whitelist_successful() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::AddToWhitelist(AddToWhitelistMsg{
+        addresses: vec![Addr::unchecked("warp")],
+    })).unwrap();
+
+    let config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(config.whitelisted_addresses, vec![Addr::unchecked("vlad"),Addr::unchecked("javier"),Addr::unchecked("warp")]);
+
+    execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::RemoveFromWhitelist(RemoveFromWhitelistMsg{
+        addresses: vec![Addr::unchecked("warp")],
+    })).unwrap();
+
+    let config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(config.whitelisted_addresses, vec![Addr::unchecked("vlad"),Addr::unchecked("javier")]);
 }
 
 #[test]
 fn test_remove_from_whitelist_not_owner() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let info = mock_info("random", &[]);
+
+    execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::RemoveFromWhitelist(RemoveFromWhitelistMsg{
+        addresses: vec![Addr::unchecked("warp")],
+    })).unwrap_err();
 }
 
 #[test]
 fn test_remove_recipient_from_whitelist() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::RemoveFromWhitelist(RemoveFromWhitelistMsg{
+        addresses: vec![recipient.sender.clone()],
+    })).unwrap();
+
+    let config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(config.whitelisted_addresses, vec![owner.sender, recipient.sender]);
 }
 
 #[test]
 fn test_remove_owner_from_whitelist() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::RemoveFromWhitelist(RemoveFromWhitelistMsg{
+        addresses: vec![owner.sender.clone()],
+    })).unwrap();
+
+    let config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(config.whitelisted_addresses,  vec![owner.sender, recipient.sender]);
 }
 
 #[test]
 fn test_update_owner_successful() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::UpdateOwner(UpdateOwnerMsg{
+        owner: "rando".to_string(),
+    })).unwrap();
+
+    let config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(config.owner, Addr::unchecked("rando"));
 }
 
 #[test]
 fn test_update_owner_unauthorized() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let info = mock_info("random", &[]);
+
+    execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::UpdateOwner(UpdateOwnerMsg{
+        owner: "rando".to_string(),
+    })).unwrap_err();
 }
 
 #[test]
 fn test_update_recipient_successful() {
-    todo!()
-}
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::UpdateRecipient(UpdateRecipientMsg{
+        recipient: "rando".to_string(),
+    })).unwrap();
+
+    let config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(config.recipient , Addr::unchecked("rando"));}
 
 #[test]
 fn test_update_recipient_unauthorized() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let info = mock_info("random", &[]);
+
+    execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::UpdateRecipient(UpdateRecipientMsg{
+        recipient: "rando".to_string(),
+    })).unwrap_err();
 }
 
 #[test]
 fn test_delegate_funds_successful() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let res = execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::DelegateFunds(DelegateFundsMsg{
+        validator: "random".to_string(),
+        amount: Coin::new(100_000, "uluna"),
+    })).unwrap();
+
+    assert_eq!(res.messages.len(), 1);
+    assert_eq!(res.messages[0], SubMsg::new(CosmosMsg::Staking(StakingMsg::Delegate {
+        validator: "random".to_string(),
+        amount: Coin {
+            denom: "uluna".to_string(),
+            amount: Uint128::new(100_000),
+        },
+    })));
 }
 
 #[test]
 fn test_delegate_funds_unauthorized() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let info = mock_info("random", &[]);
+
+    let res = execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::DelegateFunds(DelegateFundsMsg{
+        validator: "random".to_string(),
+        amount: Coin::new(100_000, "uluna"),
+    })).unwrap_err();
+    assert_eq!(res, ContractError::Unauthorized {});
 }
 
 #[test]
 fn test_undelegate_funds_successful() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let res = execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::UndelegateFunds(UndelegateFundsMsg{
+        validator: "random".to_string(),
+        amount: Coin::new(100_000, "uluna"),
+    })).unwrap();
+
+    assert_eq!(res.messages.len(), 1);
+    assert_eq!(res.messages[0], SubMsg::new(CosmosMsg::Staking(StakingMsg::Undelegate{
+        validator: "random".to_string(),
+        amount: Coin {
+            denom: "uluna".to_string(),
+            amount: Uint128::new(100_000),
+        },
+    })));
 }
 
 #[test]
 fn test_undelegate_funds_unauthorized() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let info = mock_info("random", &[]);
+
+    let res = execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::UndelegateFunds(UndelegateFundsMsg{
+        validator: "random".to_string(),
+        amount: Coin::new(100_000, "uluna"),
+    })).unwrap_err();
+    assert_eq!(res, ContractError::Unauthorized {});
 }
 
 #[test]
 fn test_redelegate_funds_successful() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let res = execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::RedelegateFunds(RedelegateFundsMsg{
+        src_validator: "random".to_string(),
+        dst_validator: "another".to_string(),
+        amount: Coin::new(100_000, "uluna"),
+    })).unwrap();
+
+    assert_eq!(res.messages.len(), 1);
+    assert_eq!(res.messages[0], SubMsg::new(CosmosMsg::Staking(StakingMsg::Redelegate{
+        src_validator: "random".to_string(),
+        dst_validator: "another".to_string(),
+        amount: Coin {
+            denom: "uluna".to_string(),
+            amount: Uint128::new(100_000),
+        },
+    })));
 }
 
 #[test]
 fn test_redelegate_funds_unauthorized() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let info = mock_info("random", &[]);
+
+    let res = execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::RedelegateFunds(RedelegateFundsMsg{
+        src_validator: "random".to_string(),
+        dst_validator: "another".to_string(),
+        amount: Coin::new(100_000, "uluna"),
+    })).unwrap_err();
+    assert_eq!(res, ContractError::Unauthorized {});
 }
 
 #[test]
 fn test_withdraw_delegator_reward_successful() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let res = execute(deps.as_mut(), env.clone(), owner.clone(), ExecuteMsg::WithdrawDelegatorReward(WithdrawDelegatorRewardMsg{
+        validator: "random".to_string(),
+    })).unwrap();
+
+    assert_eq!(res.messages.len(), 1);
+    assert_eq!(res.messages[0], SubMsg::new(CosmosMsg::Distribution(DistributionMsg::WithdrawDelegatorReward{
+        validator: "random".to_string(),
+    })));
 }
 
 #[test]
 fn test_withdraw_delegator_reward_unauthorized() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let info = mock_info("random", &[]);
+
+    let res = execute(deps.as_mut(), env.clone(), info.clone(), ExecuteMsg::WithdrawDelegatorReward(WithdrawDelegatorRewardMsg{
+        validator: "random".to_string(),
+    })).unwrap_err();
+    assert_eq!(res, ContractError::Unauthorized {});
 }
 
 #[test]
 fn test_query_config() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let res = query(deps.as_ref(), env.clone(), QueryMsg::QueryConfig{}).unwrap();
+    let value: Config = from_binary(&res).unwrap();
+    assert_eq!(
+        value,
+        Config {
+            owner: owner.sender.clone(),
+            recipient: recipient.sender.clone(),
+            cliff_amount: Uint128::new(100_000),
+            vesting_amount: Uint128::new(1000_000),
+            start_time: Uint64::new(10),
+            end_time: Uint64::new(110),
+            whitelisted_addresses: vec![owner.sender, recipient.sender],
+        }
+    );
 }
 
 #[test]
 fn test_query_state() {
-    todo!()
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    let res = query(deps.as_ref(), env.clone(), QueryMsg::QueryState{}).unwrap();
+    let value: State = from_binary(&res).unwrap();
+
+    assert_eq!(value, State {
+        last_withdrawn_time: Uint64::new(10),
+        cliff_amount_withdrawn: Uint128::new(0),
+    });
 }

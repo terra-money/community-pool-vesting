@@ -113,7 +113,7 @@ fn remove_from_whitelist(deps: DepsMut, info: MessageInfo, data: RemoveFromWhite
         return Err(ContractError::Unauthorized {});
     }
     //always keep recipient and owner address on the whitelist
-    let mut new_addresses = vec![config.recipient.clone(), config.owner.clone()];
+    let mut new_addresses = vec![config.owner.clone(), config.recipient.clone()];
     for addr in config.whitelisted_addresses {
         if !data.addresses.contains(&addr) && addr != config.recipient && addr != config.owner {
             new_addresses.push(addr);
@@ -302,6 +302,10 @@ fn withdraw_cliff_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data:
         current_balance
     };
 
+    if amount_to_withdraw.is_zero() {
+        return Err(ContractError::NothingToWithdraw {});
+    }
+
     let msg = CosmosMsg::Bank(BankMsg::Send {
         to_address: config.recipient.to_string(),
         amount: vec![Coin::new(amount_to_withdraw.u128(), data.denom.clone())],
@@ -374,6 +378,10 @@ fn withdraw_vested_funds(deps: DepsMut, env: Env, info: MessageInfo, data: Withd
             cliff_amount_withdrawn: state.cliff_amount_withdrawn
         },
     )?;
+
+    if amount_to_withdraw.is_zero() {
+        return Err(ContractError::NothingToWithdraw {});
+    }
 
     let msg = CosmosMsg::Bank(BankMsg::Send {
         to_address: config.recipient.to_string(),
