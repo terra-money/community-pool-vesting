@@ -5,13 +5,10 @@ use crate::{
     QueryMsg, RedelegateFundsMsg, RemoveFromWhitelistMsg, State, UndelegateFundsMsg,
     UpdateOwnerMsg, UpdateRecipientMsg, WithdrawDelegatorRewardMsg, WithdrawVestedFundsMsg,
 };
-use cosmwasm_std::testing::{
-    mock_info, MockApi, MockQuerier, MockStorage,
-};
+use cosmwasm_std::testing::{mock_info, MockApi, MockQuerier, MockStorage};
 use cosmwasm_std::{
-    coin, from_binary, Addr, BankMsg, BlockInfo, Coin, ContractInfo, CosmosMsg,
-    DistributionMsg, Empty, Env, MessageInfo, OwnedDeps, ReplyOn, StakingMsg, SubMsg,
-    Timestamp, Uint128, Uint64,
+    coin, from_binary, Addr, BankMsg, BlockInfo, Coin, ContractInfo, CosmosMsg, DistributionMsg,
+    Empty, Env, MessageInfo, OwnedDeps, ReplyOn, StakingMsg, SubMsg, Timestamp, Uint128, Uint64,
 };
 use std::marker::PhantomData;
 
