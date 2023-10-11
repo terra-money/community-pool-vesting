@@ -17,6 +17,18 @@ use cosmwasm_std::{
 use std::marker::PhantomData;
 
 const CONTRACT_ADDR: &str = "community_pool_vesting_contract";
+const VESTING_START_TIME: u64 = 1735707600; //jan 1, 2025, 00:00:00
+const VESTING_END_TIME: u64 = 1861937999; //dec 31, 2028, 23:59:59
+
+const CLIFF_AMOUNT: u128 = 25_000_000_000_000; //25m u_units
+const VESTING_AMOUNT: u128 = 100_000_000_000_000; //100m u_units
+
+const VESTED_PER_DAY: u128 = 68_446_270_221; //leap year and 3 years (incl. rounding errors from inner calculation) rounding error is a fraction of a luna, so it is within tolerance (actual value == 68446269678 == VESTING_AMOUNT/(365*3+366)
+const VESTED_PER_SECOND: u128 = VESTED_PER_DAY / 24 / 60 / 60;
+
+const DAY_IN_SECONDS: u64 = 86400;
+
+
 
 fn mock_dependencies_with_contract_balance(
     amount: Uint128,
@@ -43,12 +55,12 @@ fn instantiate_contract() -> (
     MessageInfo,
 ) {
     let mut deps = mock_dependencies_with_contract_balance(Uint128::new(1_100_000));
-    let owner = mock_info("vlad", &[coin(1_100_000, "uluna")]);
+    let owner = mock_info("vlad", &[]);
     let recipient = mock_info("javier", &[]);
     let env = Env {
         block: BlockInfo {
             height: 0,
-            time: Timestamp::from_seconds(10),
+            time: Timestamp::from_seconds(VESTING_START_TIME-1),
             chain_id: "phoenix-1".to_string(),
         },
         transaction: None,
@@ -60,11 +72,14 @@ fn instantiate_contract() -> (
     let instantiate_msg = InstantiateMsg {
         owner: owner.sender.to_string(),
         recipient: recipient.clone().sender.to_string(),
-        cliff_amount: Uint128::new(100_000),
-        vesting_amount: Uint128::new(1_000_000),
-        start_time: Some(Uint64::new(10)),
-        end_time: Uint64::new(110),
+        cliff_amount: Uint128::new(CLIFF_AMOUNT),
+        vesting_amount: Uint128::new(VESTING_AMOUNT),
+        start_time: Some(Uint64::new(VESTING_START_TIME)),
+        end_time: Uint64::new(VESTING_END_TIME),
     };
+
+    deps.querier
+        .update_balance(CONTRACT_ADDR, vec![Coin::new(VESTING_AMOUNT + CLIFF_AMOUNT, "uluna")]); // prefill contract with community pool funds
 
     instantiate(deps.as_mut(), env.clone(), owner.clone(), instantiate_msg).unwrap();
 
@@ -75,7 +90,7 @@ fn instantiate_contract() -> (
 fn test_withdraw_vested_funds_owner() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
-    env.block.time = env.block.time.plus_seconds(10);
+    env.block.time = env.block.time.plus_seconds(DAY_IN_SECONDS+1);
 
     let mut res = execute(
         deps.as_mut(),
@@ -92,14 +107,12 @@ fn test_withdraw_vested_funds_owner() {
             id: 0,
             msg: CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.sender.to_string(),
-                amount: vec![Coin::new(100_000, "uluna")],
+                amount: vec![Coin::new(CLIFF_AMOUNT, "uluna")],
             }),
             gas_limit: None,
             reply_on: ReplyOn::Never,
         }
     );
-    deps.querier
-        .update_balance(CONTRACT_ADDR, vec![Coin::new(1_000_000, "uluna")]);
 
     res = execute(
         deps.as_mut(),
@@ -117,7 +130,7 @@ fn test_withdraw_vested_funds_owner() {
             id: 0,
             msg: CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.sender.to_string(),
-                amount: vec![Coin::new(100_000, "uluna")],
+                amount: vec![Coin::new(VESTED_PER_DAY, "uluna")], //one day of vesting
             }),
             gas_limit: None,
             reply_on: ReplyOn::Never,
@@ -129,7 +142,7 @@ fn test_withdraw_vested_funds_owner() {
 fn test_withdraw_vested_funds_whitelist() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
-    env.block.time = env.block.time.plus_seconds(10);
+    env.block.time = env.block.time.plus_seconds(DAY_IN_SECONDS+1);
 
     let mut res = execute(
         deps.as_mut(),
@@ -146,14 +159,14 @@ fn test_withdraw_vested_funds_whitelist() {
             id: 0,
             msg: CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.sender.to_string(),
-                amount: vec![Coin::new(100_000, "uluna")],
+                amount: vec![Coin::new(CLIFF_AMOUNT, "uluna")],
             }),
             gas_limit: None,
             reply_on: ReplyOn::Never,
         }
     );
     deps.querier
-        .update_balance(CONTRACT_ADDR, vec![Coin::new(1_000_000, "uluna")]);
+        .update_balance(CONTRACT_ADDR, vec![Coin::new(VESTING_AMOUNT, "uluna")]);
 
     res = execute(
         deps.as_mut(),
@@ -171,7 +184,7 @@ fn test_withdraw_vested_funds_whitelist() {
             id: 0,
             msg: CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.sender.to_string(),
-                amount: vec![Coin::new(100_000, "uluna")],
+                amount: vec![Coin::new(VESTED_PER_DAY, "uluna")],
             }),
             gas_limit: None,
             reply_on: ReplyOn::Never,
@@ -202,10 +215,8 @@ fn test_withdraw_vested_funds_before_withdrawing_cliff_vested() {
 fn test_withdraw_cliff_vested_funds_with_not_enough_balance() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
-    env.block.time = env.block.time.plus_seconds(10);
+    env.block.time = env.block.time.plus_seconds(1);
 
-    deps.querier
-        .update_balance(CONTRACT_ADDR, vec![Coin::new(50_000, "uluna")]);
     let mut res = execute(
         deps.as_mut(),
         env.clone(),
@@ -221,7 +232,7 @@ fn test_withdraw_cliff_vested_funds_with_not_enough_balance() {
             id: 0,
             msg: CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.sender.to_string(),
-                amount: vec![Coin::new(50_000, "uluna")],
+                amount: vec![Coin::new(CLIFF_AMOUNT, "uluna")],
             }),
             gas_limit: None,
             reply_on: ReplyOn::Never,
@@ -232,8 +243,8 @@ fn test_withdraw_cliff_vested_funds_with_not_enough_balance() {
     assert_eq!(
         state,
         State {
-            cliff_amount_withdrawn: Uint128::new(50_000),
-            last_withdrawn_time: Uint64::new(10),
+            cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
+            last_withdrawn_time: Uint64::new(VESTING_START_TIME),
         }
     );
 
@@ -270,7 +281,7 @@ fn test_withdraw_vested_funds_before_vesting_started() {
 fn test_withdraw_vested_funds_zero_balance() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
-    env.block.time = env.block.time.plus_seconds(10);
+    env.block.time = env.block.time.plus_seconds(1);
     deps.querier
         .update_balance(CONTRACT_ADDR, vec![Coin::new(0, "uluna")]);
 
@@ -289,8 +300,8 @@ fn test_withdraw_vested_funds_zero_balance() {
         .save(
             deps.as_mut().storage,
             &State {
-                cliff_amount_withdrawn: Uint128::new(100_000),
-                last_withdrawn_time: Uint64::new(10),
+                cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
+                last_withdrawn_time: Uint64::new(VESTING_START_TIME),
             },
         )
         .unwrap();
@@ -312,19 +323,20 @@ fn test_withdraw_vested_funds_zero_balance() {
 fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
-    env.block.time = env.block.time.plus_seconds(10);
+    env.block.time = env.block.time.plus_seconds(DAY_IN_SECONDS * 2 + 1);
 
     STATE
         .save(
             deps.as_mut().storage,
             &State {
-                last_withdrawn_time: Uint64::new(10),
-                cliff_amount_withdrawn: Uint128::new(100_000),
+                last_withdrawn_time: Uint64::new(VESTING_START_TIME),
+                cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
             },
         )
-        .unwrap();
+        .unwrap(); //cliff withdrawn
+
     deps.querier
-        .update_balance(CONTRACT_ADDR, vec![Coin::new(50_000, "uluna")]);
+        .update_balance(CONTRACT_ADDR, vec![Coin::new(VESTED_PER_DAY, "uluna")]); //amount per second
 
     let res = execute(
         deps.as_mut(),
@@ -342,7 +354,7 @@ fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
             id: 0,
             msg: CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.sender.to_string(),
-                amount: vec![Coin::new(50_000, "uluna")],
+                amount: vec![Coin::new(VESTED_PER_DAY, "uluna")],
             }),
             gas_limit: None,
             reply_on: ReplyOn::Never,
@@ -353,13 +365,13 @@ fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
     assert_eq!(
         state,
         State {
-            last_withdrawn_time: Uint64::new(15),
-            cliff_amount_withdrawn: Uint128::new(100_000),
+            last_withdrawn_time: Uint64::new(VESTING_START_TIME + DAY_IN_SECONDS), //1 second worth withdraw, move the needle by 1 second
+            cliff_amount_withdrawn: Uint128::new(25000000000000),
         }
     );
 
     deps.querier
-        .update_balance(CONTRACT_ADDR, vec![Coin::new(150_000, "uluna")]);
+        .update_balance(CONTRACT_ADDR, vec![Coin::new(150_000_000_000, "uluna")]); //now more is in the balance than is withdrawable
     let res = execute(
         deps.as_mut(),
         env.clone(),
@@ -376,7 +388,7 @@ fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
             id: 0,
             msg: CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.sender.to_string(),
-                amount: vec![Coin::new(50_000, "uluna")],
+                amount: vec![Coin::new(VESTED_PER_DAY + 1, "uluna")], //withdraws daily amount minus already withdrawn second worth of tokens in the day (+1 uluna needed for the rounding error)
             }),
             gas_limit: None,
             reply_on: ReplyOn::Never,
@@ -387,8 +399,8 @@ fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
     assert_eq!(
         state,
         State {
-            last_withdrawn_time: Uint64::new(20),
-            cliff_amount_withdrawn: Uint128::new(100_000),
+            last_withdrawn_time: Uint64::new(VESTING_START_TIME + DAY_IN_SECONDS * 2),
+            cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
         }
     );
 }
@@ -397,19 +409,19 @@ fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
 fn test_withdraw_vested_funds_balance_vesting_ended() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
-    env.block.time = env.block.time.plus_seconds(200);
+    env.block.time = Timestamp::from_seconds(VESTING_END_TIME+1); //past the end of vesting
 
     STATE
         .save(
             deps.as_mut().storage,
             &State {
-                last_withdrawn_time: Uint64::new(10),
-                cliff_amount_withdrawn: Uint128::new(100_000),
+                last_withdrawn_time: Uint64::new(VESTING_START_TIME),
+                cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
             },
         )
         .unwrap();
-    deps.querier
-        .update_balance(CONTRACT_ADDR, vec![Coin::new(1000_000, "uluna")]);
+
+    deps.querier.update_balance(CONTRACT_ADDR, vec![coin(VESTING_AMOUNT, "uluna")]); // assume cliff has been withdrawn
 
     let res = execute(
         deps.as_mut(),
@@ -427,7 +439,7 @@ fn test_withdraw_vested_funds_balance_vesting_ended() {
             id: 0,
             msg: CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.sender.to_string(),
-                amount: vec![Coin::new(1000_000, "uluna")],
+                amount: vec![Coin::new(VESTING_AMOUNT, "uluna")],
             }),
             gas_limit: None,
             reply_on: ReplyOn::Never,
@@ -443,7 +455,7 @@ fn test_withdraw_vested_funds_balance_non_luna() {
 
     deps.querier.update_balance(
         CONTRACT_ADDR,
-        vec![Coin::new(1000_000, "uluna"), Coin::new(1000_000, "uusd")],
+        vec![Coin::new(1_000_000, "uusd")],
     );
 
     let res = execute(
@@ -462,7 +474,7 @@ fn test_withdraw_vested_funds_balance_non_luna() {
             id: 0,
             msg: CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.sender.to_string(),
-                amount: vec![Coin::new(1000_000, "uusd")],
+                amount: vec![Coin::new(1_000_000, "uusd")],
             }),
             gas_limit: None,
             reply_on: ReplyOn::Never,
@@ -473,8 +485,8 @@ fn test_withdraw_vested_funds_balance_non_luna() {
         .save(
             deps.as_mut().storage,
             &State {
-                last_withdrawn_time: Uint64::new(10),
-                cliff_amount_withdrawn: Uint128::new(100_000),
+                last_withdrawn_time: Uint64::new(VESTING_START_TIME),
+                cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
             },
         )
         .unwrap();
@@ -1021,10 +1033,10 @@ fn test_query_config() {
         Config {
             owner: owner.sender.clone(),
             recipient: recipient.sender.clone(),
-            cliff_amount: Uint128::new(100_000),
-            vesting_amount: Uint128::new(1000_000),
-            start_time: Uint64::new(10),
-            end_time: Uint64::new(110),
+            cliff_amount: Uint128::new(CLIFF_AMOUNT),
+            vesting_amount: Uint128::new(VESTING_AMOUNT),
+            start_time: Uint64::new(VESTING_START_TIME),
+            end_time: Uint64::new(VESTING_END_TIME),
             whitelisted_addresses: vec![owner.sender, recipient.sender],
         }
     );
@@ -1042,7 +1054,7 @@ fn test_query_state() {
     assert_eq!(
         value,
         State {
-            last_withdrawn_time: Uint64::new(10),
+            last_withdrawn_time: Uint64::new(1735707600),
             cliff_amount_withdrawn: Uint128::new(0),
         }
     );
