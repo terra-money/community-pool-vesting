@@ -6,12 +6,11 @@ use crate::{
     UpdateOwnerMsg, UpdateRecipientMsg, WithdrawDelegatorRewardMsg, WithdrawVestedFundsMsg,
 };
 use cosmwasm_std::testing::{
-    mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage, StakingQuerier,
-    MOCK_CONTRACT_ADDR,
+    mock_info, MockApi, MockQuerier, MockStorage,
 };
 use cosmwasm_std::{
-    coin, from_binary, Addr, BankMsg, BlockInfo, Coin, ContractInfo, CosmosMsg, DepsMut,
-    DistributionMsg, Empty, Env, MessageInfo, OwnedDeps, ReplyOn, Response, StakingMsg, SubMsg,
+    coin, from_binary, Addr, BankMsg, BlockInfo, Coin, ContractInfo, CosmosMsg,
+    DistributionMsg, Empty, Env, MessageInfo, OwnedDeps, ReplyOn, StakingMsg, SubMsg,
     Timestamp, Uint128, Uint64,
 };
 use std::marker::PhantomData;
@@ -24,16 +23,12 @@ const CLIFF_AMOUNT: u128 = 25_000_000_000_000; //25m u_units
 const VESTING_AMOUNT: u128 = 100_000_000_000_000; //100m u_units
 
 const VESTED_PER_DAY: u128 = 68_446_270_221; //leap year and 3 years (incl. rounding errors from inner calculation) rounding error is a fraction of a luna, so it is within tolerance (actual value == 68446269678 == VESTING_AMOUNT/(365*3+366)
-const VESTED_PER_SECOND: u128 = VESTED_PER_DAY / 24 / 60 / 60;
-
 const DAY_IN_SECONDS: u64 = 86400;
-
-
 
 fn mock_dependencies_with_contract_balance(
     amount: Uint128,
 ) -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
-    let mut mock_querier = MockQuerier::new(&[(
+    let mock_querier = MockQuerier::new(&[(
         CONTRACT_ADDR,
         &[Coin {
             denom: "uluna".to_string(),
@@ -60,7 +55,7 @@ fn instantiate_contract() -> (
     let env = Env {
         block: BlockInfo {
             height: 0,
-            time: Timestamp::from_seconds(VESTING_START_TIME-1),
+            time: Timestamp::from_seconds(VESTING_START_TIME - 1),
             chain_id: "phoenix-1".to_string(),
         },
         transaction: None,
@@ -78,8 +73,10 @@ fn instantiate_contract() -> (
         end_time: Uint64::new(VESTING_END_TIME),
     };
 
-    deps.querier
-        .update_balance(CONTRACT_ADDR, vec![Coin::new(VESTING_AMOUNT + CLIFF_AMOUNT, "uluna")]); // prefill contract with community pool funds
+    deps.querier.update_balance(
+        CONTRACT_ADDR,
+        vec![Coin::new(VESTING_AMOUNT + CLIFF_AMOUNT, "uluna")],
+    ); // prefill contract with community pool funds
 
     instantiate(deps.as_mut(), env.clone(), owner.clone(), instantiate_msg).unwrap();
 
@@ -90,7 +87,7 @@ fn instantiate_contract() -> (
 fn test_withdraw_vested_funds_owner() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
-    env.block.time = env.block.time.plus_seconds(DAY_IN_SECONDS+1);
+    env.block.time = env.block.time.plus_seconds(DAY_IN_SECONDS + 1);
 
     let mut res = execute(
         deps.as_mut(),
@@ -142,7 +139,7 @@ fn test_withdraw_vested_funds_owner() {
 fn test_withdraw_vested_funds_whitelist() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
-    env.block.time = env.block.time.plus_seconds(DAY_IN_SECONDS+1);
+    env.block.time = env.block.time.plus_seconds(DAY_IN_SECONDS + 1);
 
     let mut res = execute(
         deps.as_mut(),
@@ -194,7 +191,7 @@ fn test_withdraw_vested_funds_whitelist() {
 
 #[test]
 fn test_withdraw_vested_funds_before_withdrawing_cliff_vested() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(10);
 
@@ -217,7 +214,7 @@ fn test_withdraw_cliff_vested_funds_with_not_enough_balance() {
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(1);
 
-    let mut res = execute(
+    let res = execute(
         deps.as_mut(),
         env.clone(),
         owner.clone(),
@@ -262,7 +259,7 @@ fn test_withdraw_cliff_vested_funds_with_not_enough_balance() {
 
 #[test]
 fn test_withdraw_vested_funds_before_vesting_started() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.minus_seconds(5);
 
@@ -279,13 +276,13 @@ fn test_withdraw_vested_funds_before_vesting_started() {
 
 #[test]
 fn test_withdraw_vested_funds_zero_balance() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(1);
     deps.querier
         .update_balance(CONTRACT_ADDR, vec![Coin::new(0, "uluna")]);
 
-    let mut res = execute(
+    let res = execute(
         deps.as_mut(),
         env.clone(),
         owner.clone(),
@@ -409,7 +406,7 @@ fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
 fn test_withdraw_vested_funds_balance_vesting_ended() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
-    env.block.time = Timestamp::from_seconds(VESTING_END_TIME+1); //past the end of vesting
+    env.block.time = Timestamp::from_seconds(VESTING_END_TIME + 1); //past the end of vesting
 
     STATE
         .save(
@@ -421,7 +418,8 @@ fn test_withdraw_vested_funds_balance_vesting_ended() {
         )
         .unwrap();
 
-    deps.querier.update_balance(CONTRACT_ADDR, vec![coin(VESTING_AMOUNT, "uluna")]); // assume cliff has been withdrawn
+    deps.querier
+        .update_balance(CONTRACT_ADDR, vec![coin(VESTING_AMOUNT, "uluna")]); // assume cliff has been withdrawn
 
     let res = execute(
         deps.as_mut(),
@@ -453,10 +451,8 @@ fn test_withdraw_vested_funds_balance_non_luna() {
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
-    deps.querier.update_balance(
-        CONTRACT_ADDR,
-        vec![Coin::new(1_000_000, "uusd")],
-    );
+    deps.querier
+        .update_balance(CONTRACT_ADDR, vec![Coin::new(1_000_000, "uusd")]);
 
     let res = execute(
         deps.as_mut(),
@@ -507,7 +503,7 @@ fn test_withdraw_vested_funds_balance_non_luna() {
             id: 0,
             msg: CosmosMsg::Bank(BankMsg::Send {
                 to_address: recipient.sender.to_string(),
-                amount: vec![Coin::new(1000_000, "uusd")],
+                amount: vec![Coin::new(1_000_000, "uusd")],
             }),
             gas_limit: None,
             reply_on: ReplyOn::Never,
@@ -518,12 +514,12 @@ fn test_withdraw_vested_funds_balance_non_luna() {
 #[test]
 fn test_withdraw_vested_funds_unauthorized() {
     //neither owner nor whitelist
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
     deps.querier
-        .update_balance(CONTRACT_ADDR, vec![Coin::new(1000_000, "uluna")]);
+        .update_balance(CONTRACT_ADDR, vec![Coin::new(1_000_000, "uluna")]);
 
     let info = mock_info("random", &[]);
 
@@ -564,7 +560,7 @@ fn test_withdraw_vested_funds_unauthorized() {
 
 #[test]
 fn test_add_to_whitelist_successful() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -591,7 +587,7 @@ fn test_add_to_whitelist_successful() {
 
 #[test]
 fn test_add_to_whitelist_not_owner() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -610,7 +606,7 @@ fn test_add_to_whitelist_not_owner() {
 
 #[test]
 fn test_add_to_whitelist_already_included() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -633,7 +629,7 @@ fn test_add_to_whitelist_already_included() {
 
 #[test]
 fn test_remove_from_whitelist_successful() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -676,7 +672,7 @@ fn test_remove_from_whitelist_successful() {
 
 #[test]
 fn test_remove_from_whitelist_not_owner() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -741,7 +737,7 @@ fn test_remove_owner_from_whitelist() {
 
 #[test]
 fn test_update_owner_successful() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -761,7 +757,7 @@ fn test_update_owner_successful() {
 
 #[test]
 fn test_update_owner_unauthorized() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -780,7 +776,7 @@ fn test_update_owner_unauthorized() {
 
 #[test]
 fn test_update_recipient_successful() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -800,7 +796,7 @@ fn test_update_recipient_successful() {
 
 #[test]
 fn test_update_recipient_unauthorized() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -819,7 +815,7 @@ fn test_update_recipient_unauthorized() {
 
 #[test]
 fn test_delegate_funds_successful() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -849,7 +845,7 @@ fn test_delegate_funds_successful() {
 
 #[test]
 fn test_delegate_funds_unauthorized() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -870,7 +866,7 @@ fn test_delegate_funds_unauthorized() {
 
 #[test]
 fn test_undelegate_funds_successful() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -900,7 +896,7 @@ fn test_undelegate_funds_successful() {
 
 #[test]
 fn test_undelegate_funds_unauthorized() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -921,7 +917,7 @@ fn test_undelegate_funds_unauthorized() {
 
 #[test]
 fn test_redelegate_funds_successful() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -953,7 +949,7 @@ fn test_redelegate_funds_successful() {
 
 #[test]
 fn test_redelegate_funds_unauthorized() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -975,7 +971,7 @@ fn test_redelegate_funds_unauthorized() {
 
 #[test]
 fn test_withdraw_delegator_reward_successful() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -1002,7 +998,7 @@ fn test_withdraw_delegator_reward_successful() {
 
 #[test]
 fn test_withdraw_delegator_reward_unauthorized() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -1022,7 +1018,7 @@ fn test_withdraw_delegator_reward_unauthorized() {
 
 #[test]
 fn test_query_config() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
@@ -1044,7 +1040,7 @@ fn test_query_config() {
 
 #[test]
 fn test_query_state() {
-    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    let (deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(200);
 
