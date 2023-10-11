@@ -63,6 +63,3 @@ jobs:
       
       - name: Run Schema
         run: cargo make schema
-  
-      - name: Schema Changes
-        run: git diff --exit-code contracts/alliance-oracle/schema

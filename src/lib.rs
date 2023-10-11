@@ -14,7 +14,8 @@ use cosmwasm_std::{Addr, Coin, Uint128, Uint64};
 pub struct Config {
     pub owner: Addr,
     pub recipient: Addr,
-    pub initial_amount: Uint128,
+    pub cliff_amount: Uint128,
+    pub vesting_amount: Uint128,
     pub start_time: Uint64,
     pub end_time: Uint64,
     pub whitelisted_addresses: Vec<Addr>,
@@ -23,13 +24,15 @@ pub struct Config {
 #[cw_serde]
 pub struct State {
     pub last_withdrawn_time: Uint64,
+    pub cliff_amount_withdrawn: Uint128,
 }
 
 #[cw_serde]
 pub struct InstantiateMsg {
     pub owner: String,
     pub recipient: String,
-    pub initial_amount: Uint128,
+    pub cliff_amount: Uint128,
+    pub vesting_amount: Uint128,
     pub start_time: Option<Uint64>,
     pub end_time: Uint64,
 }
@@ -37,6 +40,7 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     WithdrawVestedFunds(WithdrawVestedFundsMsg),
+    WithdrawCliffVestedFunds(WithdrawVestedFundsMsg),
     WithdrawDelegatorReward(WithdrawDelegatorRewardMsg),
     DelegateFunds(DelegateFundsMsg),
     UndelegateFunds(UndelegateFundsMsg),
@@ -72,7 +76,8 @@ pub struct UndelegateFundsMsg {
 pub struct RedelegateFundsMsg {
     pub src_validator: String,
     pub dst_validator: String,
-    pub amount: Coin,}
+    pub amount: Coin,
+}
 
 #[cw_serde]
 pub struct AddToWhitelistMsg {

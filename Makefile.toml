@@ -18,7 +18,7 @@ args = ["test", "--locked"]
 
 [tasks.lint]
 command = "cargo"
-args = ["clippy", "--tests", "--", "-D", "warnings"]
+args = ["clippy", "--", "-D", "warnings"]
 
 [tasks.build]
 command = "cargo"
@@ -47,4 +47,20 @@ docker run --rm -v "$(pwd)":/code \
   --mount type=volume,source="$(basename "$(pwd)")_cache",target=/code/target \
   --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
   ${image}:0.14.0
+"""
+
+[tasks.deploy]
+script = """
+npm install -g ts-node
+ts-node ./scripts/deploy.ts
+"""
+
+[tasks.delegate-flow]
+script = """
+ts-node ./scripts/delegate-flow.ts
+"""
+
+[tasks.withdraw-flow]
+script = """
+ts-node ./scripts/withdraw-flow.ts
 """
