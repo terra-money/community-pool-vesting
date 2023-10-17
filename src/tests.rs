@@ -783,6 +783,10 @@ fn test_update_owner_successful() {
 
     let config = CONFIG.load(deps.as_ref().storage).unwrap();
     assert_eq!(config.owner, Addr::unchecked("rando"));
+    assert_eq!(
+        config.whitelisted_addresses,
+        vec![Addr::unchecked("rando"), Addr::unchecked("javier")]
+    );
 }
 
 #[test]

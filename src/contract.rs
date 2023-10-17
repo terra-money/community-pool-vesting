@@ -128,18 +128,30 @@ fn update_owner(
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
     }
+    let old_owner = config.owner;
+    let new_owner = deps.api.addr_validate(&data.owner)?;
+
+    // remove the old owner and add the new owner
+    let mut new_addresses = vec![new_owner.clone(), config.recipient.clone()];
+    for addr in config.whitelisted_addresses {
+        if addr != old_owner && addr != config.recipient && addr != new_owner {
+            new_addresses.push(addr);
+        }
+    }
+
     CONFIG.save(
         deps.storage,
         &Config {
-            owner: deps.api.addr_validate(&data.owner)?,
+            owner: new_owner,
             recipient: config.recipient,
             cliff_amount: config.cliff_amount,
             vesting_amount: config.vesting_amount,
             start_time: config.start_time,
             end_time: config.end_time,
-            whitelisted_addresses: config.whitelisted_addresses,
+            whitelisted_addresses: new_addresses,
         },
     )?;
+
     Ok(Response::new()
         .add_attribute("action", "update_owner")
         .add_attribute("owner", format!("{:?}", data.owner)))
@@ -298,12 +310,8 @@ fn claim_delegator_reward(
         return Err(ContractError::Unauthorized {});
     }
 
-    let send_reward_msg = _withdraw_delegation_rewards(
-        &deps.as_ref(),
-        &env,
-        &config.recipient,
-        &data.validator,
-    );
+    let send_reward_msg =
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.validator);
 
     let mut res = Response::new()
         .add_attribute("action", "withdraw_delegator_rewards")
