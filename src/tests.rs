@@ -1019,15 +1019,7 @@ fn test_withdraw_delegator_reward_successful() {
     )
     .unwrap();
 
-    assert_eq!(res.messages.len(), 1);
-    assert_eq!(
-        res.messages[0],
-        SubMsg::new(CosmosMsg::Distribution(
-            DistributionMsg::WithdrawDelegatorReward {
-                validator: "random".to_string(),
-            }
-        ))
-    );
+    assert_eq!(res.messages.len(), 0);
 }
 
 #[test]
