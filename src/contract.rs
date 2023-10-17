@@ -9,6 +9,7 @@ use cosmwasm_std::{
     entry_point, to_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, DistributionMsg,
     Env, MessageInfo, Response, StakingMsg, StdResult, Uint128, Uint64,
 };
+use cosmwasm_std::CosmosMsg::Staking;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -220,15 +221,21 @@ fn redelegate_funds(
     let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "redelegate_funds")
-        .add_attribute("src_validator", data.src_validator)
-        .add_attribute("dst_validator", data.dst_validator)
+        .add_attribute("src_validator", data.src_validator.to_string())
+        .add_attribute("dst_validator", data.dst_validator.to_string())
         .add_attribute("denom", data.amount.denom)
         .add_attribute("amount", data.amount.amount);
 
     if let Some(send_reward_msg) = send_reward_msg_src {
+        res = res.add_message(StakingMsg::WithdrawDelegationReward {
+            validator: data.src_validator,
+        });
         res = res.add_message(send_reward_msg);
     }
     if let Some(send_reward_msg) = send_reward_msg_dst {
+        res = res.add_message(StakingMsg::WithdrawDelegationReward {
+            validator: data.dst_validator,
+        });
         res = res.add_message(send_reward_msg);
     }
 
@@ -255,11 +262,14 @@ fn undelegate_funds(
     let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "undelegate_funds")
-        .add_attribute("validator", data.validator)
+        .add_attribute("validator", data.validator.to_string())
         .add_attribute("denom", data.amount.denom)
         .add_attribute("amount", data.amount.amount);
 
     if let Some(send_reward_msg) = send_reward_msg {
+        res = res.add_message(StakingMsg::WithdrawDelegationReward {
+            validator: data.validator,
+        });
         res = res.add_message(send_reward_msg);
     }
     Ok(res)
@@ -284,9 +294,12 @@ fn claim_delegator_reward(
     let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "withdraw_delegator_rewards")
-        .add_attribute("validator", data.validator);
+        .add_attribute("validator", data.validator.to_string());
 
     if let Some(send_reward_msg) = send_reward_msg {
+        res = res.add_message(StakingMsg::WithdrawDelegationReward {
+            validator: data.validator,
+        });
         res = res.add_message(send_reward_msg);
     }
     Ok(res)
@@ -317,6 +330,9 @@ fn delegate_funds(
         .add_attribute("amount", data.amount.amount);
 
     if let Some(send_reward_msg) = send_reward_msg {
+        res = res.add_message(StakingMsg::WithdrawDelegationReward {
+            validator: data.validator.to_string(),
+        });
         res = res.add_message(send_reward_msg);
     }
 
