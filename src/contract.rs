@@ -428,7 +428,7 @@ fn withdraw_cliff_vested_funds(
 
     Ok(Response::new()
         .add_message(msg)
-        .add_attribute("action", "withdraw_vested_funds")
+        .add_attribute("action", "withdraw_cliff_vested_funds")
         .add_attribute("denom", data.denom)
         .add_attribute("amount_to_withdraw", amount_to_withdraw)
         .add_attribute("cliff_amount_withdrawn", state.cliff_amount_withdrawn))
