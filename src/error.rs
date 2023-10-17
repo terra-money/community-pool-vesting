@@ -14,6 +14,9 @@ pub enum ContractError {
 
     #[error("Nothing to withdraw")]
     NothingToWithdraw {},
+
+    #[error("Validation error {0}")]
+    ValidationError(String),
 }
 
 impl From<ConversionOverflowError> for ContractError {

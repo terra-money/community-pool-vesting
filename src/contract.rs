@@ -6,8 +6,8 @@ use crate::{
 };
 use crate::{ContractError, State};
 use cosmwasm_std::{
-    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, DistributionMsg, Env,
-    MessageInfo, Response, StakingMsg, StdResult, Uint128, Uint64,
+    entry_point, to_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, DistributionMsg,
+    Env, MessageInfo, Response, StakingMsg, StdResult, Uint128, Uint64,
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -17,6 +17,19 @@ pub fn instantiate(
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    if let Some(start_time) = msg.start_time {
+        if start_time.u64() < env.block.time.seconds() {
+            return Err(ContractError::ValidationError(
+                "Start time cannot be in the past".to_string(),
+            ));
+        }
+        if msg.end_time < start_time {
+            return Err(ContractError::ValidationError(
+                "End time cannot be before start time".to_string(),
+            ));
+        }
+    }
+
     CONFIG.save(
         deps.storage,
         &Config {
@@ -115,18 +128,30 @@ fn update_owner(
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
     }
+    let old_owner = config.owner;
+    let new_owner = deps.api.addr_validate(&data.owner)?;
+
+    // remove the old owner and add the new owner
+    let mut new_addresses = vec![new_owner.clone(), config.recipient.clone()];
+    for addr in config.whitelisted_addresses {
+        if addr != old_owner && addr != config.recipient && addr != new_owner {
+            new_addresses.push(addr);
+        }
+    }
+
     CONFIG.save(
         deps.storage,
         &Config {
-            owner: deps.api.addr_validate(&data.owner)?,
+            owner: new_owner,
             recipient: config.recipient,
             cliff_amount: config.cliff_amount,
             vesting_amount: config.vesting_amount,
             start_time: config.start_time,
             end_time: config.end_time,
-            whitelisted_addresses: config.whitelisted_addresses,
+            whitelisted_addresses: new_addresses,
         },
     )?;
+
     Ok(Response::new()
         .add_attribute("action", "update_owner")
         .add_attribute("owner", format!("{:?}", data.owner)))
@@ -177,7 +202,7 @@ fn add_to_whitelist(
     let mut new_addresses = config.whitelisted_addresses.clone();
     for addr in data.addresses {
         if !config.whitelisted_addresses.contains(&addr) {
-            new_addresses.push(addr)
+            new_addresses.push(deps.api.addr_validate(addr.as_str())?);
         }
     }
     CONFIG.save(
@@ -213,22 +238,28 @@ fn redelegate_funds(
         amount: data.amount.clone(),
     });
     let send_reward_msg_src =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.src_validator);
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.src_validator);
     let send_reward_msg_dst =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.dst_validator);
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.dst_validator);
 
     let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "redelegate_funds")
-        .add_attribute("src_validator", data.src_validator)
-        .add_attribute("dst_validator", data.dst_validator)
+        .add_attribute("src_validator", data.src_validator.to_string())
+        .add_attribute("dst_validator", data.dst_validator.to_string())
         .add_attribute("denom", data.amount.denom)
         .add_attribute("amount", data.amount.amount);
 
     if let Some(send_reward_msg) = send_reward_msg_src {
+        res = res.add_message(DistributionMsg::WithdrawDelegatorReward {
+            validator: data.src_validator,
+        });
         res = res.add_message(send_reward_msg);
     }
     if let Some(send_reward_msg) = send_reward_msg_dst {
+        res = res.add_message(DistributionMsg::WithdrawDelegatorReward {
+            validator: data.dst_validator,
+        });
         res = res.add_message(send_reward_msg);
     }
 
@@ -250,16 +281,19 @@ fn undelegate_funds(
         amount: data.amount.clone(),
     });
     let send_reward_msg =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.validator);
 
     let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "undelegate_funds")
-        .add_attribute("validator", data.validator)
+        .add_attribute("validator", data.validator.to_string())
         .add_attribute("denom", data.amount.denom)
         .add_attribute("amount", data.amount.amount);
 
     if let Some(send_reward_msg) = send_reward_msg {
+        res = res.add_message(DistributionMsg::WithdrawDelegatorReward {
+            validator: data.validator,
+        });
         res = res.add_message(send_reward_msg);
     }
     Ok(res)
@@ -275,18 +309,18 @@ fn claim_delegator_reward(
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
     }
-    let msg = CosmosMsg::Distribution(DistributionMsg::WithdrawDelegatorReward {
-        validator: data.validator.clone(),
-    });
+
     let send_reward_msg =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.validator);
 
     let mut res = Response::new()
-        .add_message(msg)
         .add_attribute("action", "withdraw_delegator_rewards")
-        .add_attribute("validator", data.validator);
+        .add_attribute("validator", data.validator.to_string());
 
     if let Some(send_reward_msg) = send_reward_msg {
+        res = res.add_message(DistributionMsg::WithdrawDelegatorReward {
+            validator: data.validator,
+        });
         res = res.add_message(send_reward_msg);
     }
     Ok(res)
@@ -307,16 +341,19 @@ fn delegate_funds(
         amount: data.amount.clone(),
     });
     let send_reward_msg =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.validator);
 
     let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "delegate_funds")
-        .add_attribute("validator", data.validator)
+        .add_attribute("validator", data.validator.to_string())
         .add_attribute("denom", data.amount.denom)
         .add_attribute("amount", data.amount.amount);
 
     if let Some(send_reward_msg) = send_reward_msg {
+        res = res.add_message(DistributionMsg::WithdrawDelegatorReward {
+            validator: data.validator,
+        });
         res = res.add_message(send_reward_msg);
     }
 
@@ -326,7 +363,7 @@ fn delegate_funds(
 fn _withdraw_delegation_rewards(
     deps: &Deps,
     env: &Env,
-    info: &MessageInfo,
+    recipient: &Addr,
     validator: &String,
 ) -> Option<CosmosMsg> {
     let delegation_result = deps
@@ -343,7 +380,7 @@ fn _withdraw_delegation_rewards(
             return None;
         }
         return Some(CosmosMsg::Bank(BankMsg::Send {
-            to_address: info.sender.to_string(),
+            to_address: recipient.to_string(),
             amount: rewards,
         }));
     }
@@ -391,7 +428,7 @@ fn withdraw_cliff_vested_funds(
 
     Ok(Response::new()
         .add_message(msg)
-        .add_attribute("action", "withdraw_vested_funds")
+        .add_attribute("action", "withdraw_cliff_vested_funds")
         .add_attribute("denom", data.denom)
         .add_attribute("amount_to_withdraw", amount_to_withdraw)
         .add_attribute("cliff_amount_withdrawn", state.cliff_amount_withdrawn))

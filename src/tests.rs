@@ -733,6 +733,39 @@ fn test_remove_owner_from_whitelist() {
 }
 
 #[test]
+fn test_remove_owner_from_whitelist_with_accs() {
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(200);
+
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        owner.clone(),
+        ExecuteMsg::AddToWhitelist(AddToWhitelistMsg {
+            addresses: vec![Addr::unchecked("warp")],
+        }),
+    )
+    .unwrap();
+
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        owner.clone(),
+        ExecuteMsg::RemoveFromWhitelist(RemoveFromWhitelistMsg {
+            addresses: vec![owner.sender.clone()],
+        }),
+    )
+    .unwrap();
+
+    let config = CONFIG.load(deps.as_ref().storage).unwrap();
+    assert_eq!(
+        config.whitelisted_addresses,
+        vec![owner.sender, recipient.sender, Addr::unchecked("warp")]
+    );
+}
+
+#[test]
 fn test_update_owner_successful() {
     let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
@@ -750,6 +783,10 @@ fn test_update_owner_successful() {
 
     let config = CONFIG.load(deps.as_ref().storage).unwrap();
     assert_eq!(config.owner, Addr::unchecked("rando"));
+    assert_eq!(
+        config.whitelisted_addresses,
+        vec![Addr::unchecked("rando"), Addr::unchecked("javier")]
+    );
 }
 
 #[test]
@@ -982,15 +1019,7 @@ fn test_withdraw_delegator_reward_successful() {
     )
     .unwrap();
 
-    assert_eq!(res.messages.len(), 1);
-    assert_eq!(
-        res.messages[0],
-        SubMsg::new(CosmosMsg::Distribution(
-            DistributionMsg::WithdrawDelegatorReward {
-                validator: "random".to_string(),
-            }
-        ))
-    );
+    assert_eq!(res.messages.len(), 0);
 }
 
 #[test]
