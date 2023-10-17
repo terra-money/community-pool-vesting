@@ -9,7 +9,6 @@ use cosmwasm_std::{
     entry_point, to_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, DistributionMsg,
     Env, MessageInfo, Response, StakingMsg, StdResult, Uint128, Uint64,
 };
-use cosmwasm_std::CosmosMsg::Staking;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -20,10 +19,14 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     if let Some(start_time) = msg.start_time {
         if start_time.u64() < env.block.time.seconds() {
-            return Err(ContractError::ValidationError("Start time cannot be in the past".to_string()));
+            return Err(ContractError::ValidationError(
+                "Start time cannot be in the past".to_string(),
+            ));
         }
         if msg.end_time < start_time {
-            return Err(ContractError::ValidationError("End time cannot be before start time".to_string()));
+            return Err(ContractError::ValidationError(
+                "End time cannot be before start time".to_string(),
+            ));
         }
     }
 
@@ -236,13 +239,13 @@ fn redelegate_funds(
         .add_attribute("amount", data.amount.amount);
 
     if let Some(send_reward_msg) = send_reward_msg_src {
-        res = res.add_message(StakingMsg::WithdrawDelegationReward {
+        res = res.add_message(DistributionMsg::WithdrawDelegatorReward {
             validator: data.src_validator,
         });
         res = res.add_message(send_reward_msg);
     }
     if let Some(send_reward_msg) = send_reward_msg_dst {
-        res = res.add_message(StakingMsg::WithdrawDelegationReward {
+        res = res.add_message(DistributionMsg::WithdrawDelegatorReward {
             validator: data.dst_validator,
         });
         res = res.add_message(send_reward_msg);
@@ -276,7 +279,7 @@ fn undelegate_funds(
         .add_attribute("amount", data.amount.amount);
 
     if let Some(send_reward_msg) = send_reward_msg {
-        res = res.add_message(StakingMsg::WithdrawDelegationReward {
+        res = res.add_message(DistributionMsg::WithdrawDelegatorReward {
             validator: data.validator,
         });
         res = res.add_message(send_reward_msg);
@@ -294,19 +297,20 @@ fn claim_delegator_reward(
     if config.owner != info.sender {
         return Err(ContractError::Unauthorized {});
     }
-    let msg = CosmosMsg::Distribution(DistributionMsg::WithdrawDelegatorReward {
-        validator: data.validator.clone(),
-    });
-    let send_reward_msg =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.validator);
+
+    let send_reward_msg = _withdraw_delegation_rewards(
+        &deps.as_ref(),
+        &env,
+        &config.recipient,
+        &data.validator,
+    );
 
     let mut res = Response::new()
-        .add_message(msg)
         .add_attribute("action", "withdraw_delegator_rewards")
         .add_attribute("validator", data.validator.to_string());
 
     if let Some(send_reward_msg) = send_reward_msg {
-        res = res.add_message(StakingMsg::WithdrawDelegationReward {
+        res = res.add_message(DistributionMsg::WithdrawDelegatorReward {
             validator: data.validator,
         });
         res = res.add_message(send_reward_msg);
@@ -334,13 +338,13 @@ fn delegate_funds(
     let mut res = Response::new()
         .add_message(msg)
         .add_attribute("action", "delegate_funds")
-        .add_attribute("validator", data.validator)
+        .add_attribute("validator", data.validator.to_string())
         .add_attribute("denom", data.amount.denom)
         .add_attribute("amount", data.amount.amount);
 
     if let Some(send_reward_msg) = send_reward_msg {
-        res = res.add_message(StakingMsg::WithdrawDelegationReward {
-            validator: data.validator.to_string(),
+        res = res.add_message(DistributionMsg::WithdrawDelegatorReward {
+            validator: data.validator,
         });
         res = res.add_message(send_reward_msg);
     }
