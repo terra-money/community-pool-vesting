@@ -35,6 +35,7 @@ pub fn instantiate(
         &Config {
             owner: deps.api.addr_validate(&msg.owner)?,
             recipient: deps.api.addr_validate(&msg.recipient)?,
+            unlocked_amount: msg.unlocked_amount,
             cliff_amount: msg.cliff_amount,
             vesting_amount: msg.vesting_amount,
             start_time: msg
@@ -56,6 +57,7 @@ pub fn instantiate(
                 .start_time
                 .unwrap_or(Uint64::new(env.block.time.seconds())),
             cliff_amount_withdrawn: Uint128::zero(),
+            unlocked_amount_withdrawn: Uint128::zero(),
         },
     )?;
 
@@ -82,6 +84,7 @@ pub fn execute(
         ExecuteMsg::WithdrawCliffVestedFunds(data) => {
             withdraw_cliff_vested_funds(deps, env, info, data)
         }
+        ExecuteMsg::WithdrawUnlockedFunds(data) => withdraw_unlocked_funds(deps, env, info, data),
         ExecuteMsg::WithdrawDelegatorReward(data) => claim_delegator_reward(deps, env, info, data),
         ExecuteMsg::DelegateFunds(data) => delegate_funds(deps, env, info, data),
         ExecuteMsg::UndelegateFunds(data) => undelegate_funds(deps, env, info, data),
@@ -107,6 +110,7 @@ fn update_recipient(
         &Config {
             owner: config.owner,
             recipient: deps.api.addr_validate(&data.recipient)?,
+            unlocked_amount: config.unlocked_amount,
             cliff_amount: config.cliff_amount,
             vesting_amount: config.vesting_amount,
             start_time: config.start_time,
@@ -144,6 +148,7 @@ fn update_owner(
         &Config {
             owner: new_owner,
             recipient: config.recipient,
+            unlocked_amount: config.unlocked_amount,
             cliff_amount: config.cliff_amount,
             vesting_amount: config.vesting_amount,
             start_time: config.start_time,
@@ -178,6 +183,7 @@ fn remove_from_whitelist(
         &Config {
             owner: config.owner,
             recipient: config.recipient,
+            unlocked_amount: config.unlocked_amount,
             cliff_amount: config.cliff_amount,
             vesting_amount: config.vesting_amount,
             start_time: config.start_time,
@@ -210,6 +216,7 @@ fn add_to_whitelist(
         &Config {
             owner: config.owner,
             recipient: config.recipient,
+            unlocked_amount: config.unlocked_amount,
             cliff_amount: config.cliff_amount,
             vesting_amount: config.vesting_amount,
             start_time: config.start_time,
@@ -387,6 +394,51 @@ fn _withdraw_delegation_rewards(
     None
 }
 
+fn withdraw_unlocked_funds(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    data: WithdrawVestedFundsMsg,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let mut state = STATE.load(deps.storage)?;
+
+    if !config.whitelisted_addresses.contains(&info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let current_balance = deps
+        .querier
+        .query_balance(env.contract.address, data.denom.clone())?
+        .amount;
+
+    let amount_to_withdraw = if data.denom == "uluna" {
+        let withdrawable =
+            current_balance.min(config.unlocked_amount - state.unlocked_amount_withdrawn);
+        state.unlocked_amount_withdrawn += withdrawable;
+        STATE.save(deps.storage, &state)?;
+        withdrawable
+    } else {
+        current_balance
+    };
+
+    if amount_to_withdraw.is_zero() {
+        return Err(ContractError::NothingToWithdraw {});
+    }
+
+    let msg = CosmosMsg::Bank(BankMsg::Send {
+        to_address: config.recipient.to_string(),
+        amount: vec![Coin::new(amount_to_withdraw.u128(), data.denom.clone())],
+    });
+
+    Ok(Response::new()
+        .add_message(msg)
+        .add_attribute("action", "withdraw_unlocked_funds")
+        .add_attribute("denom", data.denom)
+        .add_attribute("amount_to_withdraw", amount_to_withdraw)
+        .add_attribute("unlocked_amount_withdrawn", state.cliff_amount_withdrawn))
+}
+
 fn withdraw_cliff_vested_funds(
     deps: DepsMut,
     env: Env,
@@ -449,6 +501,11 @@ fn withdraw_vested_funds(
         return Err(ContractError::Unauthorized {});
     }
 
+    // Need to withdraw unlocked amount before linear vesting amount
+    if state.unlocked_amount_withdrawn < config.unlocked_amount {
+        return Err(ContractError::WithdrawUnlockedFirst {});
+    }
+
     // Need to withdraw cliff amount before linear vesting amount
     if state.cliff_amount_withdrawn < config.cliff_amount {
         return Err(ContractError::WithdrawCliffFirst {});
@@ -506,6 +563,7 @@ fn withdraw_vested_funds(
                 state.last_withdrawn_time
             },
             cliff_amount_withdrawn: state.cliff_amount_withdrawn,
+            unlocked_amount_withdrawn: state.unlocked_amount_withdrawn,
         },
     )?;
 
