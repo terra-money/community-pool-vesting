@@ -202,7 +202,7 @@ fn add_to_whitelist(
     let mut new_addresses = config.whitelisted_addresses.clone();
     for addr in data.addresses {
         if !config.whitelisted_addresses.contains(&addr) {
-            new_addresses.push(addr)
+            new_addresses.push(deps.api.addr_validate(addr.as_str())?);
         }
     }
     CONFIG.save(
