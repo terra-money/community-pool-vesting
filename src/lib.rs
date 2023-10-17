@@ -14,6 +14,7 @@ use cosmwasm_std::{Addr, Coin, Uint128, Uint64};
 pub struct Config {
     pub owner: Addr,
     pub recipient: Addr,
+    pub unlocked_amount: Uint128,
     pub cliff_amount: Uint128,
     pub vesting_amount: Uint128,
     pub start_time: Uint64,
@@ -25,12 +26,14 @@ pub struct Config {
 pub struct State {
     pub last_withdrawn_time: Uint64,
     pub cliff_amount_withdrawn: Uint128,
+    pub unlocked_amount_withdrawn: Uint128,
 }
 
 #[cw_serde]
 pub struct InstantiateMsg {
     pub owner: String,
     pub recipient: String,
+    pub unlocked_amount: Uint128,
     pub cliff_amount: Uint128,
     pub vesting_amount: Uint128,
     pub start_time: Option<Uint64>,
@@ -39,6 +42,7 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
+    WithdrawUnlockedFunds(WithdrawVestedFundsMsg),
     WithdrawVestedFunds(WithdrawVestedFundsMsg),
     WithdrawCliffVestedFunds(WithdrawVestedFundsMsg),
     WithdrawDelegatorReward(WithdrawDelegatorRewardMsg),
