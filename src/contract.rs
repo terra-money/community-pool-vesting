@@ -6,8 +6,8 @@ use crate::{
 };
 use crate::{ContractError, State};
 use cosmwasm_std::{
-    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, DistributionMsg, Env,
-    MessageInfo, Response, StakingMsg, StdResult, Uint128, Uint64,
+    entry_point, to_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, DistributionMsg,
+    Env, MessageInfo, Response, StakingMsg, StdResult, Uint128, Uint64,
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -213,9 +213,9 @@ fn redelegate_funds(
         amount: data.amount.clone(),
     });
     let send_reward_msg_src =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.src_validator);
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.src_validator);
     let send_reward_msg_dst =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.dst_validator);
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.dst_validator);
 
     let mut res = Response::new()
         .add_message(msg)
@@ -250,7 +250,7 @@ fn undelegate_funds(
         amount: data.amount.clone(),
     });
     let send_reward_msg =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.validator);
 
     let mut res = Response::new()
         .add_message(msg)
@@ -279,7 +279,7 @@ fn claim_delegator_reward(
         validator: data.validator.clone(),
     });
     let send_reward_msg =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.validator);
 
     let mut res = Response::new()
         .add_message(msg)
@@ -307,7 +307,7 @@ fn delegate_funds(
         amount: data.amount.clone(),
     });
     let send_reward_msg =
-        _withdraw_delegation_rewards(&deps.as_ref(), &env, &info, &data.validator);
+        _withdraw_delegation_rewards(&deps.as_ref(), &env, &config.recipient, &data.validator);
 
     let mut res = Response::new()
         .add_message(msg)
@@ -326,7 +326,7 @@ fn delegate_funds(
 fn _withdraw_delegation_rewards(
     deps: &Deps,
     env: &Env,
-    info: &MessageInfo,
+    recipient: &Addr,
     validator: &String,
 ) -> Option<CosmosMsg> {
     let delegation_result = deps
@@ -343,7 +343,7 @@ fn _withdraw_delegation_rewards(
             return None;
         }
         return Some(CosmosMsg::Bank(BankMsg::Send {
-            to_address: info.sender.to_string(),
+            to_address: recipient.to_string(),
             amount: rewards,
         }));
     }
