@@ -18,6 +18,15 @@ pub fn instantiate(
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    if let Some(start_time) = msg.start_time {
+        if start_time.u64() < env.block.time.seconds() {
+            return Err(ContractError::ValidationError("Start time cannot be in the past".to_string()));
+        }
+        if msg.end_time < start_time {
+            return Err(ContractError::ValidationError("End time cannot be before start time".to_string()));
+        }
+    }
+
     CONFIG.save(
         deps.storage,
         &Config {
