@@ -6,7 +6,7 @@
 ### Introduction
 This contract is designed to manage delegation, vesting, and fund withdrawals based on a configurable vesting schedule. It also includes functionality for owner and whitelist management. The whitelist is an set of users that is allowed to withdraw on the behalf of the recipient, and withdraws *to* the recipient. This contract allows the owner to delegate, undelegate, redelegate, and withdraw staking rewards at *any* time, regardless of whether the funds are vested or unvested. This means that the permissions are the same as community vesting Luna from genesis.
 
-The instiating parameters for the [proposal](https://station.money/proposal/phoenix-1/4790) are as follow (details about the behaviour of these parameters can be found below):
+The instantiating parameters for the [proposal](https://station.money/proposal/phoenix-1/4790) are as follow (details about the behaviour of these parameters can be found below):
 
 - `owner`: "terra159q4e7zl84hzkwy95kl29accklrxpth4zcuz8m87p4nvykpszrtq5qfgfe" (Main TFL Multisig)
 - `recipient`: "terra1yv5fyftazjsy3uslzwrsaqcahn8mht87kf7jzlh50yfnu7mqxymsja06dz" (Liquidity Multisig [initially unlocked funds will be sent here])
