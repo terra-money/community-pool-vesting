@@ -36,7 +36,7 @@ The fund withdrawal calculation in this contract is designed to manage the withd
 - `vested_funds` can be withdrawn after the vesting start time.
 - The contract ensures that unlocked and cliff-vested funds have been withdrawn before allowing vested fund withdrawals.
 - Vested funds are calculated based on a linear vesting formula that considers the vesting start and end times. The formula is as follows:
-  `Vested = Total Vesting Amount * (Current Time - Start Time) / (End Time - Start Time)`
+  `Vested = Total Vesting Amount * (Current Time - Last Withdrawn Time) / (End Time - Start Time)`
 
 ❗❗❗ An important detail to note is that delegation, undelegation, redelegation, and staking reward withdrawals are **enabled**, meaning that the vesting contract gives the `owner` the same permissions as vesting Luna from genesis. ❗❗❗
 
