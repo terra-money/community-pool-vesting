@@ -7,8 +7,8 @@ use crate::{
 };
 use cosmwasm_std::testing::{mock_info, MockApi, MockQuerier, MockStorage};
 use cosmwasm_std::{
-    coin, from_binary, Addr, BankMsg, BlockInfo, Coin, ContractInfo, CosmosMsg, DistributionMsg,
-    Empty, Env, MessageInfo, OwnedDeps, ReplyOn, StakingMsg, SubMsg, Timestamp, Uint128, Uint64,
+    coin, from_binary, Addr, BankMsg, BlockInfo, Coin, ContractInfo, CosmosMsg, Empty, Env,
+    MessageInfo, OwnedDeps, ReplyOn, StakingMsg, SubMsg, Timestamp, Uint128, Uint64,
 };
 use std::marker::PhantomData;
 
@@ -16,6 +16,7 @@ const CONTRACT_ADDR: &str = "community_pool_vesting_contract";
 const VESTING_START_TIME: u64 = 1735707600; //jan 1, 2025, 00:00:00
 const VESTING_END_TIME: u64 = 1861937999; //dec 31, 2028, 23:59:59
 
+const UNLOCKED_AMOUNT: u128 = 25_000_000_000_000; //25m u_units
 const CLIFF_AMOUNT: u128 = 25_000_000_000_000; //25m u_units
 const VESTING_AMOUNT: u128 = 100_000_000_000_000; //100m u_units
 
@@ -64,6 +65,7 @@ fn instantiate_contract() -> (
     let instantiate_msg = InstantiateMsg {
         owner: owner.sender.to_string(),
         recipient: recipient.clone().sender.to_string(),
+        unlocked_amount: Uint128::new(UNLOCKED_AMOUNT),
         cliff_amount: Uint128::new(CLIFF_AMOUNT),
         vesting_amount: Uint128::new(VESTING_AMOUNT),
         start_time: Some(Uint64::new(VESTING_START_TIME)),
@@ -85,6 +87,16 @@ fn test_withdraw_vested_funds_owner() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(DAY_IN_SECONDS + 1);
+
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        owner.clone(),
+        ExecuteMsg::WithdrawUnlockedFunds(WithdrawVestedFundsMsg {
+            denom: "uluna".to_string(),
+        }),
+    )
+    .unwrap();
 
     let mut res = execute(
         deps.as_mut(),
@@ -137,6 +149,15 @@ fn test_withdraw_vested_funds_whitelist() {
     let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(DAY_IN_SECONDS + 1);
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        recipient.clone(),
+        ExecuteMsg::WithdrawUnlockedFunds(WithdrawVestedFundsMsg {
+            denom: "uluna".to_string(),
+        }),
+    )
+    .unwrap();
 
     let mut res = execute(
         deps.as_mut(),
@@ -187,10 +208,50 @@ fn test_withdraw_vested_funds_whitelist() {
 }
 
 #[test]
+fn test_withdraw_unlocked() {
+    let (mut deps, mut env, mut owner, recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.minus_seconds(5);
+
+    let res = execute(
+        deps.as_mut(),
+        env.clone(),
+        owner.clone(),
+        ExecuteMsg::WithdrawUnlockedFunds(WithdrawVestedFundsMsg {
+            denom: "uluna".to_string(),
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        res.messages[0],
+        SubMsg {
+            id: 0,
+            msg: CosmosMsg::Bank(BankMsg::Send {
+                to_address: recipient.sender.to_string(),
+                amount: vec![Coin::new(UNLOCKED_AMOUNT, "uluna")],
+            }),
+            gas_limit: None,
+            reply_on: ReplyOn::Never,
+        }
+    );
+}
+
+#[test]
 fn test_withdraw_vested_funds_before_withdrawing_cliff_vested() {
     let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
     owner.funds = vec![];
     env.block.time = env.block.time.plus_seconds(10);
+
+    STATE
+        .save(
+            deps.as_mut().storage,
+            &State {
+                cliff_amount_withdrawn: Uint128::new(0),
+                last_withdrawn_time: Uint64::new(VESTING_START_TIME),
+                unlocked_amount_withdrawn: Uint128::new(UNLOCKED_AMOUNT),
+            },
+        )
+        .unwrap();
 
     let res = execute(
         deps.as_mut(),
@@ -203,6 +264,36 @@ fn test_withdraw_vested_funds_before_withdrawing_cliff_vested() {
     .unwrap_err();
 
     assert_eq!(res, ContractError::WithdrawCliffFirst {});
+}
+
+#[test]
+fn test_withdraw_vested_funds_before_withdrawing_unlocked() {
+    let (mut deps, mut env, mut owner, _recipient) = instantiate_contract();
+    owner.funds = vec![];
+    env.block.time = env.block.time.plus_seconds(10);
+
+    STATE
+        .save(
+            deps.as_mut().storage,
+            &State {
+                cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
+                last_withdrawn_time: Uint64::new(VESTING_START_TIME),
+                unlocked_amount_withdrawn: Uint128::new(0),
+            },
+        )
+        .unwrap();
+
+    let res = execute(
+        deps.as_mut(),
+        env,
+        owner,
+        ExecuteMsg::WithdrawVestedFunds(WithdrawVestedFundsMsg {
+            denom: "uluna".to_string(),
+        }),
+    )
+    .unwrap_err();
+
+    assert_eq!(res, ContractError::WithdrawUnlockedFirst {});
 }
 
 #[test]
@@ -239,6 +330,7 @@ fn test_withdraw_cliff_vested_funds_with_not_enough_balance() {
         State {
             cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
             last_withdrawn_time: Uint64::new(VESTING_START_TIME),
+            unlocked_amount_withdrawn: Uint128::new(0),
         }
     );
 
@@ -278,6 +370,16 @@ fn test_withdraw_vested_funds_zero_balance() {
     env.block.time = env.block.time.plus_seconds(1);
     deps.querier
         .update_balance(CONTRACT_ADDR, vec![Coin::new(0, "uluna")]);
+    let res = execute(
+        deps.as_mut(),
+        env.clone(),
+        owner.clone(),
+        ExecuteMsg::WithdrawUnlockedFunds(WithdrawVestedFundsMsg {
+            denom: "uluna".to_string(),
+        }),
+    )
+    .unwrap_err();
+    assert_eq!(res, ContractError::NothingToWithdraw {});
 
     let res = execute(
         deps.as_mut(),
@@ -296,6 +398,7 @@ fn test_withdraw_vested_funds_zero_balance() {
             &State {
                 cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
                 last_withdrawn_time: Uint64::new(VESTING_START_TIME),
+                unlocked_amount_withdrawn: Uint128::new(UNLOCKED_AMOUNT),
             },
         )
         .unwrap();
@@ -325,9 +428,10 @@ fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
             &State {
                 last_withdrawn_time: Uint64::new(VESTING_START_TIME),
                 cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
+                unlocked_amount_withdrawn: Uint128::new(UNLOCKED_AMOUNT),
             },
         )
-        .unwrap(); //cliff withdrawn
+        .unwrap(); //cliff and unlocked withdrawn
 
     deps.querier
         .update_balance(CONTRACT_ADDR, vec![Coin::new(VESTED_PER_DAY, "uluna")]); //amount per second
@@ -361,6 +465,7 @@ fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
         State {
             last_withdrawn_time: Uint64::new(VESTING_START_TIME + DAY_IN_SECONDS), //1 second worth withdraw, move the needle by 1 second
             cliff_amount_withdrawn: Uint128::new(25000000000000),
+            unlocked_amount_withdrawn: Uint128::new(UNLOCKED_AMOUNT),
         }
     );
 
@@ -395,6 +500,7 @@ fn test_withdraw_vested_funds_balance_smaller_than_withdrawable() {
         State {
             last_withdrawn_time: Uint64::new(VESTING_START_TIME + DAY_IN_SECONDS * 2),
             cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
+            unlocked_amount_withdrawn: Uint128::new(UNLOCKED_AMOUNT),
         }
     );
 }
@@ -411,6 +517,7 @@ fn test_withdraw_vested_funds_balance_vesting_ended() {
             &State {
                 last_withdrawn_time: Uint64::new(VESTING_START_TIME),
                 cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
+                unlocked_amount_withdrawn: Uint128::new(UNLOCKED_AMOUNT),
             },
         )
         .unwrap();
@@ -480,6 +587,7 @@ fn test_withdraw_vested_funds_balance_non_luna() {
             &State {
                 last_withdrawn_time: Uint64::new(VESTING_START_TIME),
                 cliff_amount_withdrawn: Uint128::new(CLIFF_AMOUNT),
+                unlocked_amount_withdrawn: Uint128::new(UNLOCKED_AMOUNT),
             },
         )
         .unwrap();
@@ -538,6 +646,7 @@ fn test_withdraw_vested_funds_unauthorized() {
             &State {
                 last_withdrawn_time: Uint64::new(10),
                 cliff_amount_withdrawn: Uint128::new(100_000),
+                unlocked_amount_withdrawn: Uint128::new(0),
             },
         )
         .unwrap();
@@ -1055,6 +1164,7 @@ fn test_query_config() {
         Config {
             owner: owner.sender.clone(),
             recipient: recipient.sender.clone(),
+            unlocked_amount: Uint128::new(UNLOCKED_AMOUNT),
             cliff_amount: Uint128::new(CLIFF_AMOUNT),
             vesting_amount: Uint128::new(VESTING_AMOUNT),
             start_time: Uint64::new(VESTING_START_TIME),
@@ -1078,6 +1188,7 @@ fn test_query_state() {
         State {
             last_withdrawn_time: Uint64::new(1735707600),
             cliff_amount_withdrawn: Uint128::new(0),
+            unlocked_amount_withdrawn: Uint128::new(0),
         }
     );
 }
