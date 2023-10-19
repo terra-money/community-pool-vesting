@@ -4,9 +4,10 @@
 
 
 ### Introduction
-This contract is designed to manage delegation, vesting, and fund withdrawals based on a configurable vesting schedule. It also includes functionality for owner and whitelist management. The whitelist is an set of users that is allowed to withdraw on the behalf of the recipient, and withdraws *to* the recipient. This contract allows the owner to delegate, undelegate, redelegate, and withdraw staking rewards at *any* time, regardless of whether the funds are vested or unvested. This means that the permissions are the same as community vesting Luna from genesis.
 
-The instantiating parameters for the [contract](https://terrasco.pe/mainnet/address/terra19yxffalxzu88n5lnj40trehpryemqsz7pnnwxp8v73hxz0rl2u9q5qqwh4) defined in the [proposal](https://station.money/proposal/phoenix-1/4790) are as follow (details about the behaviour of these parameters can be found below):
+This contract is designed to manage the delegation, vesting, and withdrawal of funds based on a configurable vesting schedule. It includes functionality for `owner` and `whitelist` management. The `whitelist` is a set of users who are allowed to withdraw unlocked funds directly to the contract's specified `recipient`. This contract allows the `owner` to delegate, undelegate, redelegate, and withdraw staking rewards at *any* time, regardless of whether the funds are vested or unvested. This functionality gives the contract funds the same permissions as [Luna vesting from a genesis allocation](https://docs.terra.money/learn/protocol#vesting). 
+
+The [instantiating parameters](#instantiatemsg) for the [contract](https://terrasco.pe/mainnet/address/terra19yxffalxzu88n5lnj40trehpryemqsz7pnnwxp8v73hxz0rl2u9q5qqwh4) defined in [governance proposal 4790](https://station.money/proposal/phoenix-1/4790) are as follows:
 
 - `owner`: "terra159q4e7zl84hzkwy95kl29accklrxpth4zcuz8m87p4nvykpszrtq5qfgfe" (Main TFL Multisig)
 - `recipient`: "terra1yv5fyftazjsy3uslzwrsaqcahn8mht87kf7jzlh50yfnu7mqxymsja06dz" (Liquidity Multisig [initially unlocked funds will be sent here])
@@ -16,12 +17,14 @@ The instantiating parameters for the [contract](https://terrasco.pe/mainnet/addr
 - `start_time`: "1735707600" (Jan 1, 2025, 00\:00\:00 UTC in seconds)
 - `end_time`: "1861937999" (Dec 31, 2028, 23\:59\:59 UTC in seconds)
 
-With these parameters, we get the following distribution:
-- 25M LUNA immediately withdrawn to the Liquidity multisig upon proposal pass
-- 25M LUNA fully withdrawable at Jan 1, 2025, 00\:00\:00 UTC
-- 100M LUNA linearly vesting from Jan 1, 2025, 00\:00\:00 UTC to Dec 31, 2028, 23\:59\:59 UTC at a rate of 68,446 +/- 1 LUNA per day
+The instantiating parameters outline the following distribution:
+
+- 25M LUNA to be immediately withdrawn to the Liquidity multisig upon the passing of the proposal. 
+- 25M LUNA to be locked until fully withdrawable on Jan 1, 2025, at 00\:00\:00 UTC
+- 100M LUNA to be linearly vesting from Jan 1, 2025, 00\:00\:00 UTC until Dec 31, 2028, 23\:59\:59 UTC at a rate of 68,446 (+/- 1) LUNA per day. 
 
 ### Fund Withdrawal Calculation
+
 The fund withdrawal calculation in this contract is designed to manage the withdrawal of funds based on a vesting schedule. It includes three types of fund withdrawals: unlocked, cliff-vested, and vested. The calculation is as follows:
 
 **Unlocked Funds:**
@@ -30,15 +33,15 @@ The fund withdrawal calculation in this contract is designed to manage the withd
 
 **Cliff-Vested Funds:**
 - `cliff_vested` funds can be wholly withdrawn after the vesting start time.
-- The contract tracks the total withdrawn `cliff_vested` and the amount already withdrawn to ensure that the unlocked funds can only be withdrawn a single time.
+- The contract tracks the total withdrawn `cliff_vested` funds and the amount already withdrawn to ensure that the unlocked funds can only be withdrawn a single time.
 
 **Vested Funds:**
-- `vested_funds` can be withdrawn after the vesting start time.
+- `vested_funds` are unlocked during the vesting period and can be withdrawn after the vesting start time.
 - The contract ensures that unlocked and cliff-vested funds have been withdrawn before allowing vested fund withdrawals.
 - Vested funds are calculated based on a linear vesting formula that considers the vesting start and end times. The formula is as follows:
   `Vested = Total Vesting Amount * (Current Time - Start Time) / (End Time - Start Time)`
 
-❗❗❗ An important detail to note is that delegation, undelegation, redelegation, and staking reward withdrawals are **enabled**, meaning that the vesting contract gives the `owner` the same permissions as vesting Luna from genesis. ❗❗❗
+❗❗❗ An important detail to note is that delegation, undelegation, redelegation, and staking reward withdrawals are **enabled**, meaning that the vesting contract gives the `owner` the same permissions as Luna vesting from genesis. ❗❗❗
 
 
 ### Messages
@@ -47,7 +50,7 @@ Purpose: This message is used to initialize the smart contract when it is first 
 
 **Fields:**
 
-`owner`: The address of the contract owner, who has privileges to every single function, but does *not* have access to modify the contract code.
+`owner`: The address of the contract owner, who has privileges to every single function, but does ***not*** have access to modify the contract code.
 `recipient`: The address where funds can be withdrawn to.
 `unlocked_amount`: The total amount of funds that are immediately unlocked and can be withdrawn at any time.
 `cliff_amount`: The total amount of cliff-vested funds that become available for withdrawal after a specified cliff time.
@@ -67,8 +70,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
 - `WithdrawDelegatorReward`: Initiates the withdrawal of rewards earned by delegating tokens to a validator.
 - `DelegateFunds`: Delegates a specified amount of tokens to a validator.
 - `UndelegateFunds`: Undelegates a specified amount of tokens from a validator.
-- `RedelegateFunds`: Redelicates a specified amount of tokens from one validator to another.
-- `AddToWhitelist`: Adds one or more addresses to the whitelist of users who can withdraw vested funds.
+- `RedelegateFunds`: Redelegates a specified amount of tokens from one validator to another.
+- `AddToWhitelist`: Adds one or more addresses to the whitelist of users who can withdraw vested funds to a recipient.
 - `RemoveFromWhitelist`: Removes one or more addresses from the whitelist.
 - `UpdateOwner`: Updates the contract owner's address.
 - `UpdateRecipient`: Updates the recipient's address for fund withdrawals.
@@ -89,14 +92,14 @@ Purpose: This message is used to initialize the smart contract when it is first 
 - `denom`: The denomination of the token to be withdrawn (e.g., "uluna").
 
 #### WithdrawDelegatorRewardMsg
-Purpose: This message is used as part of the ExecuteMsg to specify the details of withdrawing rewards earned by delegating tokens.
+**Purpose:** This message is used as part of the ExecuteMsg to specify the details of withdrawing rewards earned by delegating tokens.
 
 **Fields:**
 
 - `validator`: The address of the validator from whom rewards are to be withdrawn.
 
 #### DelegateFundsMsg
-Purpose: This message is used as part of the ExecuteMsg to specify the details of delegating funds to a validator.
+**Purpose:** This message is used as part of the ExecuteMsg to specify the details of delegating funds to a validator.
 
 **Fields:**
 
@@ -104,7 +107,7 @@ Purpose: This message is used as part of the ExecuteMsg to specify the details o
 - `amount`: The amount of tokens to delegate, specified as a Coin object.
 
 #### UndelegateFundsMsg
-Purpose: This message is used as part of the ExecuteMsg to specify the details of undelegating funds from a validator.
+**Purpose:** This message is used as part of the ExecuteMsg to specify the details of undelegating funds from a validator.
 
 **Fields:**
 
@@ -112,7 +115,7 @@ Purpose: This message is used as part of the ExecuteMsg to specify the details o
 - `amount`: The amount of tokens to undelegate, specified as a Coin object.
 
 #### RedelegateFundsMsg
-Purpose: This message is used as part of the ExecuteMsg to specify the details of redelegating funds from one validator to another.
+**Purpose:** This message is used as part of the ExecuteMsg to specify the details of redelegating funds from one validator to another.
 
 **Fields:**
 
@@ -121,28 +124,28 @@ Purpose: This message is used as part of the ExecuteMsg to specify the details o
 - `amount`: The amount of tokens to redelegate, specified as a Coin object.
 
 #### AddToWhitelistMsg
-Purpose: This message is used as part of the ExecuteMsg to specify the addresses that should be added to the whitelist of users allowed to withdraw vested funds.
+**Purpose:** This message is used as part of the ExecuteMsg to specify the addresses that should be added to the whitelist of users allowed to withdraw vested funds to the recipient.
 
 **Fields:**
 
 - `addresses`: A list of addresses to be added to the whitelist.
 
 #### RemoveFromWhitelistMsg
-Purpose: This message is used as part of the ExecuteMsg to specify the addresses that should be removed from the whitelist of users allowed to withdraw vested funds.
+**Purpose:** This message is used as part of the ExecuteMsg to specify the addresses that should be removed from the whitelist of users allowed to withdraw vested funds.
 
 **Fields:**
 
 - `addresses`: A list of addresses to be removed from the whitelist.
 
 #### UpdateOwnerMsg
-Purpose: This message is used as part of the ExecuteMsg to specify the new owner's address to update the contract's configuration.
+**Purpose:** This message is used as part of the ExecuteMsg to specify the new owner's address to update the contract's configuration.
 
 **Fields:**
 
 - `owner`: The new address of the contract owner.
 
 #### UpdateRecipientMsg
-Purpose: This message is used as part of the ExecuteMsg to specify the new recipient's address for fund withdrawals.
+**Purpose:** This message is used as part of the ExecuteMsg to specify the new recipient's address for fund withdrawals.
 
 **Fields:**
 
@@ -154,7 +157,7 @@ Purpose: This message is used as part of the ExecuteMsg to specify the new recip
   **Purpose:** Instantiates the contract with the specified parameters.
   
   **Functionality:**
-  - It validates the input parameters, including ensuring that the start time is not in the past and that the end time is after the start time.
+  - It validates the input parameters and ensures that the start time is not in the past and that the end time is after the start time.
   - Initializes and saves the contract's configuration (Config) and state (State) in the contract's storage.
   
   **Returns:** A response indicating the successful instantiation of the contract.
@@ -173,7 +176,6 @@ Purpose: This message is used as part of the ExecuteMsg to specify the new recip
   **Functionality:**
   
   - Accepts a QueryMsg to specify whether to query the contract's configuration or state.
-  Returns the requested data in binary format.
   
   **Returns:** Binary data containing either the contract's configuration or state, based on the query.
 
@@ -283,10 +285,10 @@ Purpose: This message is used as part of the ExecuteMsg to specify the new recip
 
 #### `withdraw_cliff_vested_funds`
   **Purpose:** To withdraw cliff-vested funds based on the vesting schedule.
-  
+
   **Functionality:**
   
-  - Checks if the sender (caller) is whitelisted, the current time is after the vesting start time, and the cliff amount has not been fully withdrawn. If not, it returns an error.
+  - Checks if the sender (caller) is whitelisted, the current time is after the vesting start time, and the cliff amount has not been fully withdrawn. If any of the previous are false, it returns an error.
   - Calculates the amount of cliff-vested funds that can be withdrawn based on the vesting schedule.
   - Updates the state to reflect the withdrawn amount.
   - Sends the calculated amount of funds to the recipient address.
@@ -298,7 +300,7 @@ Purpose: This message is used as part of the ExecuteMsg to specify the new recip
   
   **Functionality:**
   
-  - Checks if the sender (caller) is whitelisted and the current time is after the vesting start time. If not, it returns an error.
+  - Checks if the sender (caller) is whitelisted and that the current time is after the vesting start time. If not, it returns an error.
   - Ensures that unlocked and cliff-vested funds have been withdrawn before allowing vested fund withdrawals.
   - Calculates the amount of vested funds that can be withdrawn based on the vesting schedule.
   - Updates the state to reflect the withdrawn amount.
