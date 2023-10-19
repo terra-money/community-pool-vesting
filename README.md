@@ -1,9 +1,6 @@
 # Community Pool Vesting Contract
 
-## Table of Contents
-
-
-### Introduction
+## Introduction
 
 This contract is designed to manage the delegation, vesting, and withdrawal of funds based on a configurable vesting schedule. It includes functionality for `owner` and `whitelist` management. The `whitelist` is a set of users who are allowed to withdraw unlocked funds directly to the contract's specified `recipient`. This contract allows the `owner` to delegate, undelegate, redelegate, and withdraw staking rewards at *any* time, regardless of whether the funds are vested or unvested. This functionality gives the contract funds the same permissions as [Luna vesting from a genesis allocation](https://docs.terra.money/learn/protocol#vesting). 
 
@@ -39,13 +36,15 @@ The fund withdrawal calculation in this contract is designed to manage the withd
 - `vested_funds` are unlocked during the vesting period and can be withdrawn after the vesting start time.
 - The contract ensures that unlocked and cliff-vested funds have been withdrawn before allowing vested fund withdrawals.
 - Vested funds are calculated based on a linear vesting formula that considers the vesting start and end times. The formula is as follows:
+  
   `Vested = Total Vesting Amount * (Current Time - Start Time) / (End Time - Start Time)`
 
 ❗❗❗ An important detail to note is that delegation, undelegation, redelegation, and staking reward withdrawals are **enabled**, meaning that the vesting contract gives the `owner` the same permissions as Luna vesting from genesis. ❗❗❗
 
+## Messages
 
-### Messages
-#### InstantiateMsg
+### InstantiateMsg
+
 Purpose: This message is used to initialize the smart contract when it is first deployed. It defines the initial configuration of the contract.
 
 **Fields:**
@@ -58,25 +57,26 @@ Purpose: This message is used to initialize the smart contract when it is first 
 `start_time`: An optional parameter representing the start time for vesting. If not provided, it defaults to the current block time.
 `end_time`: The end time for vesting, after which all funds are fully vested and available for withdrawal.
 
-#### ExecuteMsg
+### ExecuteMsg
 
 **Purpose:** This enum defines various executable messages that can be sent to the contract to perform different actions.
 
 **Messages:**
 
-- `WithdrawUnlockedFunds`: Initiates the withdrawal of unlocked funds.
-- `WithdrawVestedFunds`: Initiates the withdrawal of vested funds.
-- `WithdrawCliffVestedFunds`: Initiates the withdrawal of cliff-vested funds.
-- `WithdrawDelegatorReward`: Initiates the withdrawal of rewards earned by delegating tokens to a validator.
-- `DelegateFunds`: Delegates a specified amount of tokens to a validator.
-- `UndelegateFunds`: Undelegates a specified amount of tokens from a validator.
-- `RedelegateFunds`: Redelegates a specified amount of tokens from one validator to another.
-- `AddToWhitelist`: Adds one or more addresses to the whitelist of users who can withdraw vested funds to a recipient.
-- `RemoveFromWhitelist`: Removes one or more addresses from the whitelist.
-- `UpdateOwner`: Updates the contract owner's address.
-- `UpdateRecipient`: Updates the recipient's address for fund withdrawals.
+- [`WithdrawUnlockedFunds`](#withdraw_unlocked_funds): Initiates the withdrawal of unlocked funds.
+- [`WithdrawVestedFunds`](#withdraw_vested_funds): Initiates the withdrawal of vested funds.
+- [`WithdrawCliffVestedFunds`](#withdraw_cliff_vested_funds): Initiates the withdrawal of cliff-vested funds.
+- [`WithdrawDelegatorReward`](#withdrawdelegatorrewardmsg): Initiates the withdrawal of rewards earned by delegating tokens to a validator.
+- [`DelegateFunds`](#delegate_funds): Delegates a specified amount of tokens to a validator.
+- [`UndelegateFunds`](#undelegate_funds): Undelegates a specified amount of tokens from a validator.
+- [`RedelegateFunds`](#redelegate_funds): Redelegates a specified amount of tokens from one validator to another.
+- [`AddToWhitelist`](#add_to_whitelist): Adds one or more addresses to the whitelist of users who can withdraw vested funds to a recipient.
+- [`RemoveFromWhitelist`](#remove_from_whitelist): Removes one or more addresses from the whitelist.
+- [`UpdateOwner`](#update_owner): Updates the contract owner's address.
+- [`UpdateRecipient`](#update_recipient): Updates the recipient's address for fund withdrawals.
 
-#### QueryMsg
+### QueryMsg
+
 **Purpose:** This enum defines messages that can be used to query the contract's configuration or state.
 
 **Messages:**
@@ -84,38 +84,43 @@ Purpose: This message is used to initialize the smart contract when it is first 
 - `QueryConfig`: Queries the contract's configuration.
 - `QueryState`: Queries the contract's state.
 
-#### WithdrawVestedFundsMsg
-**Purpose:** This message is used as part of the ExecuteMsg to specify the details of withdrawing vested funds.
+### WithdrawVestedFundsMsg
+
+**Purpose:** This message is used as part of the `ExecuteMsg` to specify the details of withdrawing vested funds.
 
 **Fields:**
 
 - `denom`: The denomination of the token to be withdrawn (e.g., "uluna").
 
-#### WithdrawDelegatorRewardMsg
-**Purpose:** This message is used as part of the ExecuteMsg to specify the details of withdrawing rewards earned by delegating tokens.
+### WithdrawDelegatorRewardMsg
+
+**Purpose:** This message is used as part of the `ExecuteMsg` to specify the details of withdrawing rewards earned by delegating tokens.
 
 **Fields:**
 
 - `validator`: The address of the validator from whom rewards are to be withdrawn.
 
-#### DelegateFundsMsg
-**Purpose:** This message is used as part of the ExecuteMsg to specify the details of delegating funds to a validator.
+### DelegateFundsMsg
+
+**Purpose:** This message is used as part of the `ExecuteMsg` to specify the details of delegating funds to a validator.
 
 **Fields:**
 
 - `validator`: The address of the validator to whom tokens are delegated.
 - `amount`: The amount of tokens to delegate, specified as a Coin object.
 
-#### UndelegateFundsMsg
-**Purpose:** This message is used as part of the ExecuteMsg to specify the details of undelegating funds from a validator.
+### UndelegateFundsMsg
+
+**Purpose:** This message is used as part of the `ExecuteMsg` to specify the details of undelegating funds from a validator.
 
 **Fields:**
 
 - `validator`: The address of the validator from whom tokens are to be undelegated.
 - `amount`: The amount of tokens to undelegate, specified as a Coin object.
 
-#### RedelegateFundsMsg
-**Purpose:** This message is used as part of the ExecuteMsg to specify the details of redelegating funds from one validator to another.
+### RedelegateFundsMsg
+
+**Purpose:** This message is used as part of the `ExecuteMsg` to specify the details of redelegating funds from one validator to another.
 
 **Fields:**
 
@@ -123,37 +128,43 @@ Purpose: This message is used to initialize the smart contract when it is first 
 - `dst_validator`: The address of the destination validator to whom tokens are to be redelegated.
 - `amount`: The amount of tokens to redelegate, specified as a Coin object.
 
-#### AddToWhitelistMsg
-**Purpose:** This message is used as part of the ExecuteMsg to specify the addresses that should be added to the whitelist of users allowed to withdraw vested funds to the recipient.
+### AddToWhitelistMsg
+
+**Purpose:** This message is used as part of the `ExecuteMsg` to specify the addresses that should be added to the whitelist of users allowed to withdraw vested funds to the recipient.
 
 **Fields:**
 
 - `addresses`: A list of addresses to be added to the whitelist.
 
-#### RemoveFromWhitelistMsg
-**Purpose:** This message is used as part of the ExecuteMsg to specify the addresses that should be removed from the whitelist of users allowed to withdraw vested funds.
+### RemoveFromWhitelistMsg
+
+**Purpose:** This message is used as part of the `ExecuteMsg` to specify the addresses that should be removed from the whitelist of users allowed to withdraw vested funds.
 
 **Fields:**
 
 - `addresses`: A list of addresses to be removed from the whitelist.
 
-#### UpdateOwnerMsg
-**Purpose:** This message is used as part of the ExecuteMsg to specify the new owner's address to update the contract's configuration.
+### UpdateOwnerMsg
+
+**Purpose:** This message is used as part of the `ExecuteMsg` to specify the new owner's address to update the contract's configuration.
 
 **Fields:**
 
 - `owner`: The new address of the contract owner.
 
-#### UpdateRecipientMsg
-**Purpose:** This message is used as part of the ExecuteMsg to specify the new recipient's address for fund withdrawals.
+### UpdateRecipientMsg
+
+**Purpose:** This message is used as part of the `ExecuteMsg` to specify the new recipient's address for fund withdrawals.
 
 **Fields:**
 
 - `recipient`: The new address where funds can be withdrawn to.
 
 
-### Functions
-#### `instantiate`
+## Functions
+
+### `instantiate`
+
   **Purpose:** Instantiates the contract with the specified parameters.
   
   **Functionality:**
@@ -162,15 +173,17 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful instantiation of the contract.
 
-#### `execute`
+### `execute`
+
   **Purpose:** Execute functions.
   
   **Functionality:**
-  - Matches the received ExecuteMsg with different actions and calls corresponding functions to handle them. This function delegates the execution of specific actions to other functions.
+  - Matches the received `ExecuteMsg` with different actions and calls corresponding functions to handle them. This function delegates the execution of specific actions to other functions.
   
   **Returns:** A response based on the executed action.
 
-#### `query`
+### `query`
+
   **Purpose:** To query the contract's state or configuration.
   
   **Functionality:**
@@ -179,7 +192,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** Binary data containing either the contract's configuration or state, based on the query.
 
-#### `update_recipient`
+### `update_recipient`
+
   **Purpose:** To update the recipient address in the contract's configuration.
   
   **Functionality:**
@@ -189,7 +203,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful update of the recipient address.
 
-#### `update_owner`
+### `update_owner`
+
   **Purpose:** To update the contract owner's address.
   
   **Functionality:**
@@ -199,7 +214,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful update of the contract owner.
 
-#### `add_to_whitelist`
+### `add_to_whitelist`
+
   **Purpose:** To add one or more addresses to the contract's whitelist.
   
   **Functionality:**
@@ -208,7 +224,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful addition of addresses to the whitelist.
 
-#### `remove_from_whitelist`
+### `remove_from_whitelist`
+
   **Purpose:** To remove one or more addresses from the contract's whitelist.
   
   **Functionality:**
@@ -218,7 +235,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful removal of addresses from the whitelist.
 
-#### `delegate_funds`
+### `delegate_funds`
+
   **Purpose:** To delegate (stake) funds to a validator.
   
   **Functionality:**
@@ -229,7 +247,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful execution of the delegation action.
 
-#### `undelegate_funds`
+### `undelegate_funds`
+
   **Purpose:** To undelegate (unstake) funds from a validator.
   
   **Functionality:**
@@ -240,7 +259,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful execution of the undelegate action.
 
-#### `redelegate_funds`
+### `redelegate_funds`
+
   **Purpose:** To redelegate funds from one validator to another.
   
   **Functionality:**
@@ -251,7 +271,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful execution of the redelegate action.
 
-#### `claim_delegator_reward`
+### `claim_delegator_reward`
+
   **Purpose:** To claim delegation rewards for a validator.
   
   **Functionality:**
@@ -261,7 +282,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful execution of the delegation rewards withdrawal.
 
-#### `_withdraw_delegation_rewards`
+### `_withdraw_delegation_rewards`
+
   **Purpose:** Internal function to withdraw delegation rewards for a validator.
   
   **Functionality:**
@@ -271,7 +293,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A CosmosMsg to send rewards if available; otherwise, None.
 
-#### `withdraw_unlocked_funds`
+### `withdraw_unlocked_funds`
+
   **Purpose:** To withdraw unlocked funds based on the vesting schedule.
   
   **Functionality:**
@@ -283,7 +306,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful execution of the unlocked fund withdrawal.
 
-#### `withdraw_cliff_vested_funds`
+### `withdraw_cliff_vested_funds`
+
   **Purpose:** To withdraw cliff-vested funds based on the vesting schedule.
 
   **Functionality:**
@@ -295,7 +319,8 @@ Purpose: This message is used to initialize the smart contract when it is first 
   
   **Returns:** A response indicating the successful execution of the cliff-vested fund withdrawal.
 
-#### `withdraw_vested_funds`
+### `withdraw_vested_funds`
+
   **Purpose:** To withdraw vested funds based on the vesting schedule.
   
   **Functionality:**
