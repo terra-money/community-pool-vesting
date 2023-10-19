@@ -10,9 +10,9 @@ The instantiating parameters for the [contract](https://terrasco.pe/mainnet/addr
 
 - `owner`: "terra159q4e7zl84hzkwy95kl29accklrxpth4zcuz8m87p4nvykpszrtq5qfgfe" (Main TFL Multisig)
 - `recipient`: "terra1yv5fyftazjsy3uslzwrsaqcahn8mht87kf7jzlh50yfnu7mqxymsja06dz" (Liquidity Multisig [initially unlocked funds will be sent here])
-- `unlocked_amount`: "25000000000000" (25M uluna)
-- `cliff_amount`: "25000000000000" (25M uluna)
-- `vesting_amount`: "100000000000000" (100M uluna)
+- `unlocked_amount`: "25000000000000" (25M LUNA)
+- `cliff_amount`: "25000000000000" (25M LUNA)
+- `vesting_amount`: "100000000000000" (100M LUNA)
 - `start_time`: "1735707600" (Jan 1, 2025, 00\:00\:00 UTC in seconds)
 - `end_time`: "1861937999" (Dec 31, 2028, 23\:59\:59 UTC in seconds)
 
