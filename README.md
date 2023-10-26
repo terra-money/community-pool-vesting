@@ -21,6 +21,8 @@ With these parameters, we get the following distribution:
 - 25M LUNA fully withdrawable at Jan 1, 2025, 00\:00\:00 UTC
 - 100M LUNA linearly vesting from Jan 1, 2025, 00\:00\:00 UTC to Dec 31, 2028, 23\:59\:59 UTC at a rate of 68,446 +/- 1 LUNA per day
 
+The audit report confirming the function and security of the contract have been provided by SCV Security and can be found at this [link](https://github.com/SCV-Security/PublicReports/blob/main/Terra/TerraForm%20Labs%20-%20Community%20Pool%20Vesting%20Contract%20-%20Audit%20Report%20v1.0.pdf).
+
 ### Fund Withdrawal Calculation
 The fund withdrawal calculation in this contract is designed to manage the withdrawal of funds based on a vesting schedule. It includes three types of fund withdrawals: unlocked, cliff-vested, and vested. The calculation is as follows:
 
